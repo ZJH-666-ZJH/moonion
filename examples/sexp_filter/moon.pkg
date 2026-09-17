@@ -1,0 +1,5 @@
+import {
+  "ZJH-666-ZJH/moonion" @ion,
+}
+
+pkgtype(kind: "executable")
