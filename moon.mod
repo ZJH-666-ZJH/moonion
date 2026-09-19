@@ -1,6 +1,6 @@
 name = "ZJH-666-ZJH/moonion"
 
-version = "0.1.0"
+version = "0.1.1"
 
 readme = "README.md"
 
@@ -13,3 +13,4 @@ keywords = [ "ion", "amazon-ion", "codec", "binary", "serialization" ]
 preferred_target = "wasm-gc"
 
 description = "Amazon Ion 1.0 text and binary codec for MoonBit"
+
