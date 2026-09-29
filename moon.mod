@@ -13,4 +13,3 @@ keywords = [ "ion", "amazon-ion", "codec", "binary", "serialization" ]
 preferred_target = "wasm-gc"
 
 description = "Amazon Ion 1.0 text and binary codec for MoonBit"
-

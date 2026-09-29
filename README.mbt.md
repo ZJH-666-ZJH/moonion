@@ -28,6 +28,13 @@ Ion binary ─►  BVM + type descriptor ─►  IonValue
 
 解码按相反方向进行。传输层、文件 IO 和云服务客户端都不在本库范围内。
 
+
+## 环境要求
+
+- MoonBit 工具链：`moonc 0.10.14` 或更高版本。
+- 默认后端：`wasm-gc`；CI 同时检查 `wasm-gc`、`wasm`、`js` 和 `native`。
+- 仅使用 MoonBit 标准库，核心编解码不依赖外部运行时。
+
 ## 快速开始
 
 调用方包的 `moon.pkg`：
@@ -40,7 +47,8 @@ import {
 
 ### 1. 解析文本并写成二进制
 
-```moonbit
+```moonbit nocheck
+///|
 fn main {
   match @ion.load("Product::{ id: \"sku-42\", count: 3 }") {
     Ok(v) => {
@@ -58,7 +66,8 @@ fn main {
 
 ### 2. 构造 catalog 样例
 
-```moonbit
+```moonbit nocheck
+///|
 fn main {
   let product = @ion.catalog_sample()
   println(@ion.dumps_all([product, @ion.sexp_sample()]))

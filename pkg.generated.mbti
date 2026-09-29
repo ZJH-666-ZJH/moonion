@@ -1,0 +1,295 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "ZJH-666-ZJH/moonion"
+
+import {
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub const ION_VERSION : String = "1.0"
+
+pub fn bigint_from_decimal_string(String) -> Result[BigInt, IonError]
+
+pub fn bigint_from_int(Int) -> BigInt
+
+pub fn bigint_from_int64(Int64) -> BigInt
+
+pub fn bigint_from_magnitude(Bool, Bytes) -> BigInt
+
+pub fn bigint_from_radix_string(String, Int) -> Result[BigInt, IonError]
+
+pub fn bigint_zero() -> BigInt
+
+pub fn binary_to_text(Bytes) -> Result[String, IonError]
+
+pub fn catalog_sample() -> IonValue
+
+pub fn decimal_from_int(Int) -> IonDecimal
+
+pub fn decimal_from_parts(BigInt, Int) -> IonDecimal
+
+pub fn dumps(IonValue) -> String
+
+pub fn dumps_all(Array[IonValue]) -> String
+
+pub fn dumps_binary(IonValue) -> Bytes
+
+pub fn dumps_binary_all(Array[IonValue]) -> Bytes
+
+pub fn dumps_bytes(IonValue) -> Bytes
+
+pub fn dumps_bytes_all(Array[IonValue]) -> Bytes
+
+pub fn dumps_text(IonValue) -> String
+
+pub fn dumps_text_all(Array[IonValue]) -> String
+
+pub fn f64_from_be4(Int, Int, Int, Int) -> Double
+
+pub fn f64_from_be_bytes(Int, Int, Int, Int, Int, Int, Int, Int) -> Double
+
+pub fn f64_to_be_bytes(Double) -> Bytes
+
+pub fn hex_decode(String) -> Result[Bytes, IonError]
+
+pub fn hex_encode(Bytes, upper? : Bool) -> String
+
+pub fn ion_annotated(Array[String], IonDatum) -> IonValue
+
+pub fn ion_bigint(BigInt) -> IonValue
+
+pub fn ion_blob(Bytes) -> IonValue
+
+pub fn ion_bool(Bool) -> IonValue
+
+pub fn ion_clob(Bytes) -> IonValue
+
+pub fn ion_decimal(IonDecimal) -> IonValue
+
+pub fn ion_field(String, IonValue) -> IonField
+
+pub fn ion_float(Double) -> IonValue
+
+pub fn ion_int(Int) -> IonValue
+
+pub fn ion_int64(Int64) -> IonValue
+
+pub fn ion_list(Array[IonValue]) -> IonValue
+
+pub fn ion_null(IonType) -> IonValue
+
+pub fn ion_sexp(Array[IonValue]) -> IonValue
+
+pub fn ion_string(String) -> IonValue
+
+pub fn ion_struct(Array[IonField]) -> IonValue
+
+pub fn ion_symbol(String) -> IonValue
+
+pub fn ion_timestamp(IonTimestamp) -> IonValue
+
+pub fn ion_value(IonDatum) -> IonValue
+
+pub fn ion_version() -> String
+
+pub fn load(String) -> Result[IonValue, IonError]
+
+pub fn load_binary(Bytes) -> Result[IonValue, IonError]
+
+pub fn load_bytes(Bytes) -> Result[IonValue, IonError]
+
+pub fn load_text(String) -> Result[IonValue, IonError]
+
+pub fn loads(String) -> Result[Array[IonValue], IonError]
+
+pub fn loads_binary(Bytes) -> Result[Array[IonValue], IonError]
+
+pub fn loads_bytes(Bytes) -> Result[Array[IonValue], IonError]
+
+pub fn loads_text(String) -> Result[Array[IonValue], IonError]
+
+pub fn needs_quoting(String) -> Bool
+
+pub fn parse_decimal_text(String) -> Result[IonDecimal, IonError]
+
+pub fn parse_timestamp_text(String) -> Result[IonTimestamp, IonError]
+
+pub fn quote_symbol(String) -> String
+
+pub fn roundtrip_binary(Bytes) -> Result[Bytes, IonError]
+
+pub fn roundtrip_text(String) -> Result[String, IonError]
+
+pub fn sexp_sample() -> IonValue
+
+pub fn symbol_table_new() -> SymbolTable
+
+pub fn system_max_id() -> Int
+
+pub fn system_symbol_id(String) -> Int?
+
+pub fn system_symbol_name(Int) -> String?
+
+pub fn text_to_binary(String) -> Result[Bytes, IonError]
+
+pub fn timestamp_of(Int, Int, Int, Int, Int, Int, IonDecimal, Int, Bool, TimestampPrecision) -> Result[IonTimestamp, IonError]
+
+pub fn timestamp_year(Int) -> Result[IonTimestamp, IonError]
+
+pub fn values_equal(IonValue, IonValue) -> Bool
+
+// Errors
+
+// Types and methods
+pub(all) struct BigInt {
+  negative : Bool
+  digits : Bytes
+} derive(Eq, @debug.Debug)
+pub fn BigInt::compare(Self, Self) -> Int
+pub fn BigInt::eq_value(Self, Self) -> Bool
+pub fn BigInt::equal(Self, Self) -> Bool
+pub fn BigInt::is_zero(Self) -> Bool
+pub fn BigInt::not_equal(Self, Self) -> Bool
+pub fn BigInt::sign(Self) -> Int
+pub fn BigInt::to_decimal_string(Self) -> String
+pub fn BigInt::to_int64(Self) -> Int64?
+pub fn BigInt::to_repr(Self) -> @debug.Repr
+
+pub(all) enum IonDatum {
+  NullD(IonType)
+  BoolD(Bool)
+  IntD(BigInt)
+  FloatD(Double)
+  DecimalD(IonDecimal)
+  TimestampD(IonTimestamp)
+  SymbolD(String)
+  StringD(String)
+  ClobD(Bytes)
+  BlobD(Bytes)
+  ListD(Array[IonValue])
+  SexpD(Array[IonValue])
+  StructD(Array[IonField])
+} derive(Eq, @debug.Debug)
+pub fn IonDatum::equal(Self, Self) -> Bool
+pub fn IonDatum::not_equal(Self, Self) -> Bool
+pub fn IonDatum::to_repr(Self) -> @debug.Repr
+
+pub(all) struct IonDecimal {
+  coefficient : BigInt
+  exponent : Int
+} derive(Eq, @debug.Debug)
+pub fn IonDecimal::equal(Self, Self) -> Bool
+pub fn IonDecimal::is_zero(Self) -> Bool
+pub fn IonDecimal::not_equal(Self, Self) -> Bool
+pub fn IonDecimal::to_ion_text(Self) -> String
+pub fn IonDecimal::to_repr(Self) -> @debug.Repr
+
+pub(all) enum IonError {
+  UnexpectedEof
+  InvalidBinary(String)
+  InvalidText(String)
+  InvalidUtf8
+  InvalidSymbol(String)
+  InvalidTimestamp(String)
+  InvalidDecimal(String)
+  InvalidNumber(String)
+  InvalidBlob(String)
+  InvalidAnnotation(String)
+  InvalidSymbolTable(String)
+  Unsupported(String)
+  EmptyDocument
+} derive(Eq, @debug.Debug)
+pub fn IonError::code(Self) -> String
+pub fn IonError::equal(Self, Self) -> Bool
+pub fn IonError::message(Self) -> String
+pub fn IonError::not_equal(Self, Self) -> Bool
+pub fn IonError::to_repr(Self) -> @debug.Repr
+
+pub(all) struct IonField {
+  name : String
+  value : IonValue
+} derive(Eq, @debug.Debug)
+pub fn IonField::equal(Self, Self) -> Bool
+pub fn IonField::not_equal(Self, Self) -> Bool
+pub fn IonField::to_repr(Self) -> @debug.Repr
+
+pub(all) struct IonTimestamp {
+  year : Int
+  month : Int
+  day : Int
+  hour : Int
+  minute : Int
+  second : Int
+  fraction : IonDecimal
+  offset_minutes : Int
+  offset_unknown : Bool
+  precision : TimestampPrecision
+} derive(Eq, @debug.Debug)
+pub fn IonTimestamp::equal(Self, Self) -> Bool
+pub fn IonTimestamp::not_equal(Self, Self) -> Bool
+pub fn IonTimestamp::to_ion_text(Self) -> String
+pub fn IonTimestamp::to_repr(Self) -> @debug.Repr
+
+pub(all) enum IonType {
+  NullT
+  BoolT
+  IntT
+  FloatT
+  DecimalT
+  TimestampT
+  SymbolT
+  StringT
+  ClobT
+  BlobT
+  ListT
+  SexpT
+  StructT
+} derive(Eq, @debug.Debug)
+pub fn IonType::equal(Self, Self) -> Bool
+pub fn IonType::name(Self) -> String
+pub fn IonType::not_equal(Self, Self) -> Bool
+pub fn IonType::to_repr(Self) -> @debug.Repr
+
+pub(all) struct IonValue {
+  annotations : Array[String]
+  datum : IonDatum
+} derive(Eq, @debug.Debug)
+pub fn IonValue::as_bool(Self) -> Bool?
+pub fn IonValue::as_int(Self) -> BigInt?
+pub fn IonValue::as_list(Self) -> Array[Self]?
+pub fn IonValue::as_string(Self) -> String?
+pub fn IonValue::as_struct(Self) -> Array[IonField]?
+pub fn IonValue::as_symbol(Self) -> String?
+pub fn IonValue::equal(Self, Self) -> Bool
+pub fn IonValue::field(Self, String) -> Self?
+pub fn IonValue::ion_type(Self) -> IonType
+pub fn IonValue::is_null(Self) -> Bool
+pub fn IonValue::is_symbol_table(Self) -> Bool
+pub fn IonValue::not_equal(Self, Self) -> Bool
+pub fn IonValue::to_repr(Self) -> @debug.Repr
+pub fn IonValue::with_annotation(Self, String) -> Self
+
+pub(all) struct SymbolTable {
+  locals : Array[String]
+}
+pub fn SymbolTable::define_local(Self, String) -> Unit
+pub fn SymbolTable::intern(Self, String) -> Int
+pub fn SymbolTable::local_names(Self) -> Array[String]
+pub fn SymbolTable::name_of(Self, Int) -> Result[String, IonError]
+pub fn SymbolTable::reset_locals(Self) -> Unit
+
+pub(all) enum TimestampPrecision {
+  Year
+  Month
+  Day
+  Minute
+  Second
+  Fractional
+} derive(Eq, @debug.Debug)
+pub fn TimestampPrecision::equal(Self, Self) -> Bool
+pub fn TimestampPrecision::not_equal(Self, Self) -> Bool
+pub fn TimestampPrecision::to_repr(Self) -> @debug.Repr
+
+// Type aliases
+
+// Traits
