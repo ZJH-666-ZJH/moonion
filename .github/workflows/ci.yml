@@ -23,8 +23,8 @@ jobs:
 
       - name: Show toolchain versions
         run: |
-          moon version --all
-          moonc -v 2>&1 | grep -E 'moonc v(0\.10\.(1[4-9]|[2-9][0-9])|0\.(1[1-9]|[2-9][0-9])\.|[1-9][0-9]*\.)'
+          moon version --all | tee /tmp/moon-versions.txt
+          grep -E 'moonc v(0\.10\.(1[4-9]|[2-9][0-9])|0\.(1[1-9]|[2-9][0-9])\.|[1-9][0-9]*\.)' /tmp/moon-versions.txt
 
       - name: Format
         shell: bash
