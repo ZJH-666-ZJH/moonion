@@ -1,6 +1,6 @@
 name = "ZJH-666-ZJH/moonion"
 
-version = "0.1.1"
+version = "0.1.2"
 
 readme = "README.md"
 
