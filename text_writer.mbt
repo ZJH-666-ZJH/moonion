@@ -15,7 +15,7 @@ fn escape_ion_string(text : String) -> String {
       out.write_string("\\r")
     } else if c == 9 {
       out.write_string("\\t")
-    } else if c < 32 {
+    } else if c < 32 || c == 127 {
       out.write_string("\\x")
       out.write_char(nibble_char((c >> 4) & 15, false))
       out.write_char(nibble_char(c & 15, false))
@@ -79,7 +79,9 @@ fn dumps_datum(datum : IonDatum) -> String {
 
 ///|
 fn float_to_ion_text(value : Double) -> String {
-  if is_nan(value) {
+  if value == 0.0 && bytes_to_array(f64_to_be_bytes(value))[0].to_int() == 128 {
+    "-0e0"
+  } else if is_nan(value) {
     "nan"
   } else if is_inf(value) {
     if value < 0.0 {
@@ -89,7 +91,7 @@ fn float_to_ion_text(value : Double) -> String {
     }
   } else {
     let s = value.to_string()
-    if str_has(s, 101) || str_has(s, 69) || str_has(s, 46) {
+    if str_has(s, 101) || str_has(s, 69) {
       s
     } else {
       s + "e0"
@@ -129,7 +131,7 @@ fn list_to_text(
   let mut i = 0
   while i < values.length() {
     if i > 0 {
-      out.write_string(", ")
+      out.write_string(if open == "(" { " " } else { ", " })
     }
     out.write_string(dumps_text(values[i]))
     i += 1

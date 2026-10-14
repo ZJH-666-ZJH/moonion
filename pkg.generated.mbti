@@ -20,7 +20,7 @@ pub fn bigint_from_radix_string(String, Int) -> Result[BigInt, IonError]
 
 pub fn bigint_zero() -> BigInt
 
-pub fn binary_to_text(Bytes) -> Result[String, IonError]
+pub fn binary_to_text(Bytes, catalog? : Array[SharedSymbolTable]) -> Result[String, IonError]
 
 pub fn catalog_sample() -> IonValue
 
@@ -92,21 +92,21 @@ pub fn ion_value(IonDatum) -> IonValue
 
 pub fn ion_version() -> String
 
-pub fn load(String) -> Result[IonValue, IonError]
+pub fn load(String, catalog? : Array[SharedSymbolTable]) -> Result[IonValue, IonError]
 
-pub fn load_binary(Bytes) -> Result[IonValue, IonError]
+pub fn load_binary(Bytes, catalog? : Array[SharedSymbolTable]) -> Result[IonValue, IonError]
 
-pub fn load_bytes(Bytes) -> Result[IonValue, IonError]
+pub fn load_bytes(Bytes, catalog? : Array[SharedSymbolTable]) -> Result[IonValue, IonError]
 
-pub fn load_text(String) -> Result[IonValue, IonError]
+pub fn load_text(String, catalog? : Array[SharedSymbolTable]) -> Result[IonValue, IonError]
 
-pub fn loads(String) -> Result[Array[IonValue], IonError]
+pub fn loads(String, catalog? : Array[SharedSymbolTable]) -> Result[Array[IonValue], IonError]
 
-pub fn loads_binary(Bytes) -> Result[Array[IonValue], IonError]
+pub fn loads_binary(Bytes, catalog? : Array[SharedSymbolTable]) -> Result[Array[IonValue], IonError]
 
-pub fn loads_bytes(Bytes) -> Result[Array[IonValue], IonError]
+pub fn loads_bytes(Bytes, catalog? : Array[SharedSymbolTable]) -> Result[Array[IonValue], IonError]
 
-pub fn loads_text(String) -> Result[Array[IonValue], IonError]
+pub fn loads_text(String, catalog? : Array[SharedSymbolTable]) -> Result[Array[IonValue], IonError]
 
 pub fn needs_quoting(String) -> Bool
 
@@ -116,9 +116,9 @@ pub fn parse_timestamp_text(String) -> Result[IonTimestamp, IonError]
 
 pub fn quote_symbol(String) -> String
 
-pub fn roundtrip_binary(Bytes) -> Result[Bytes, IonError]
+pub fn roundtrip_binary(Bytes, catalog? : Array[SharedSymbolTable]) -> Result[Bytes, IonError]
 
-pub fn roundtrip_text(String) -> Result[String, IonError]
+pub fn roundtrip_text(String, catalog? : Array[SharedSymbolTable]) -> Result[String, IonError]
 
 pub fn sexp_sample() -> IonValue
 
@@ -130,7 +130,7 @@ pub fn system_symbol_id(String) -> Int?
 
 pub fn system_symbol_name(Int) -> String?
 
-pub fn text_to_binary(String) -> Result[Bytes, IonError]
+pub fn text_to_binary(String, catalog? : Array[SharedSymbolTable]) -> Result[Bytes, IonError]
 
 pub fn timestamp_of(Int, Int, Int, Int, Int, Int, IonDecimal, Int, Bool, TimestampPrecision) -> Result[IonTimestamp, IonError]
 
@@ -269,8 +269,17 @@ pub fn IonValue::not_equal(Self, Self) -> Bool
 pub fn IonValue::to_repr(Self) -> @debug.Repr
 pub fn IonValue::with_annotation(Self, String) -> Self
 
+pub(all) struct SharedSymbolTable {
+  name : String
+  version : Int
+  symbols : Array[String?]
+} derive(Eq, @debug.Debug)
+pub fn SharedSymbolTable::equal(Self, Self) -> Bool
+pub fn SharedSymbolTable::not_equal(Self, Self) -> Bool
+pub fn SharedSymbolTable::to_repr(Self) -> @debug.Repr
+
 pub(all) struct SymbolTable {
-  locals : Array[String]
+  locals : Array[String?]
 }
 pub fn SymbolTable::define_local(Self, String) -> Unit
 pub fn SymbolTable::intern(Self, String) -> Int

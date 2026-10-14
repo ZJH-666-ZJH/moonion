@@ -2,6 +2,8 @@
 priv struct TextCursor {
   src : String
   mut i : Int
+  mut depth : Int
+  table : SymbolTable
 }
 
 ///|
@@ -104,11 +106,17 @@ fn read_quoted_symbol(c : TextCursor) -> Result[String, IonError] {
     }
     if ch == 92 {
       cursor_bump(c)
+      if skip_escaped_newline(c) {
+        continue
+      }
       match read_escape(c) {
         Ok(v) => out.write_char(v)
         Err(e) => return Err(e)
       }
     } else {
+      if ch < 32 || ch == 127 {
+        return Err(InvalidText("raw control character"))
+      }
       out.write_char(ch.unsafe_to_char())
       cursor_bump(c)
     }
@@ -123,25 +131,33 @@ fn read_escape(c : TextCursor) -> Result[Char, IonError] {
     return Err(InvalidText("unterminated escape"))
   }
   cursor_bump(c)
-  if ch == 110 {
-    Ok('\n')
-  } else if ch == 114 {
-    Ok('\r')
-  } else if ch == 116 {
-    Ok('\t')
-  } else if ch == 34 || ch == 39 || ch == 92 || ch == 47 {
-    Ok(ch.unsafe_to_char())
-  } else if ch == 120 {
-    let h1 = nibble_value_int(cursor_peek(c))
-    cursor_bump(c)
-    let h2 = nibble_value_int(cursor_peek(c))
-    cursor_bump(c)
-    match (h1, h2) {
-      (Some(a), Some(b)) => Ok(((a << 4) | b).unsafe_to_char())
-      _ => Err(InvalidText("bad hex escape"))
+  match ch {
+    48 => Ok('\u0000')
+    97 => Ok('\u0007')
+    98 => Ok('\b')
+    102 => Ok('\u000c')
+    110 => Ok('\n')
+    114 => Ok('\r')
+    116 => Ok('\t')
+    118 => Ok('\u000b')
+    34 | 39 | 92 | 47 | 63 => Ok(ch.unsafe_to_char())
+    120 | 117 | 85 => {
+      let count = if ch == 120 { 2 } else if ch == 117 { 4 } else { 8 }
+      let mut n = 0L
+      for j = 0; j < count; j = j + 1 {
+        let v = match nibble_value_int(cursor_peek(c)) {
+          Some(v) => v
+          None => return Err(InvalidText("invalid Unicode escape"))
+        }
+        cursor_bump(c)
+        n = (n << 4) | v.to_int64()
+      }
+      if n > 0x10FFFFL || (n >= 0xD800L && n <= 0xDFFFL) {
+        return Err(InvalidText("invalid Unicode scalar"))
+      }
+      Ok(n.to_int().unsafe_to_char())
     }
-  } else {
-    Ok(ch.unsafe_to_char())
+    _ => Err(InvalidText("unknown escape"))
   }
 }
 
@@ -160,11 +176,17 @@ fn read_quoted_string(c : TextCursor) -> Result[String, IonError] {
     }
     if ch == 92 {
       cursor_bump(c)
+      if skip_escaped_newline(c) {
+        continue
+      }
       match read_escape(c) {
         Ok(v) => out.write_char(v)
         Err(e) => return Err(e)
       }
     } else {
+      if ch < 32 || ch == 127 {
+        return Err(InvalidText("raw control character"))
+      }
       out.write_char(ch.unsafe_to_char())
       cursor_bump(c)
     }
@@ -183,21 +205,68 @@ fn parse_blob_or_clob(c : TextCursor) -> Result[IonValue, IonError] {
     Err(e) => return Err(e)
     Ok(_) => ()
   }
-  if cursor_peek(c) == 34 {
-    let s = match read_quoted_string(c) {
+  if is_long_quote(c) {
+    let text = match read_long_strings(c, true) {
       Ok(v) => v
       Err(e) => return Err(e)
     }
     match skip_ws_comments(c) {
-      Err(e) => return Err(e)
       Ok(_) => ()
+      Err(e) => return Err(e)
     }
     if cursor_peek(c) != 125 || cursor_peek_at(c, 1) != 125 {
       return Err(InvalidText("unterminated clob"))
     }
     cursor_bump(c)
     cursor_bump(c)
-    Ok(ion_clob(utf8_encode(s)))
+    let bytes : Array[Byte] = []
+    for unit in text {
+      bytes.push(unit.to_int().to_byte())
+    }
+    Ok(ion_clob(Bytes::from_array(bytes)))
+  } else if cursor_peek(c) == 34 {
+    let bytes : Array[Byte] = []
+    while cursor_peek(c) == 34 {
+      cursor_bump(c)
+      while !cursor_eof(c) && cursor_peek(c) != 34 {
+        let n = if cursor_peek(c) == 92 {
+          cursor_bump(c)
+          if skip_escaped_newline(c) {
+            continue
+          }
+          if cursor_peek(c) == 117 || cursor_peek(c) == 85 {
+            return Err(InvalidText("Unicode escape in clob"))
+          }
+          match read_escape(c) {
+            Ok(ch) => ch.to_int()
+            Err(e) => return Err(e)
+          }
+        } else {
+          let n = cursor_peek(c)
+          if n < 32 || n > 126 {
+            return Err(InvalidText("non-ASCII clob character"))
+          }
+          cursor_bump(c)
+          n
+        }
+        bytes.push(n.to_byte())
+      }
+      if cursor_eof(c) {
+        return Err(InvalidText("unterminated clob"))
+      }
+      cursor_bump(c)
+      match skip_ws_comments(c) {
+        Ok(_) => ()
+        Err(e) => return Err(e)
+      }
+      break
+    }
+    if cursor_peek(c) != 125 || cursor_peek_at(c, 1) != 125 {
+      return Err(InvalidText("unterminated clob"))
+    }
+    cursor_bump(c)
+    cursor_bump(c)
+    Ok(ion_clob(Bytes::from_array(bytes)))
   } else {
     let body = StringBuilder()
     while !cursor_eof(c) &&
@@ -248,7 +317,12 @@ fn parse_container(
         Ok(_) => ()
       }
       if cursor_peek(c) == 44 {
+        if sexp {
+          return Err(InvalidText("comma in sexp"))
+        }
         cursor_bump(c)
+      } else if !sexp && cursor_peek(c) != close {
+        return Err(InvalidText("expected comma in list"))
       }
     }
   }
@@ -292,6 +366,8 @@ fn parse_struct_fields(c : TextCursor) -> Result[Array[IonField], IonError] {
       }
       if cursor_peek(c) == 44 {
         cursor_bump(c)
+      } else if cursor_peek(c) != 125 {
+        return Err(InvalidText("expected comma in struct"))
       }
     }
   }
@@ -306,7 +382,13 @@ fn parse_field_name(c : TextCursor) -> Result[String, IonError] {
   }
   let ch = cursor_peek(c)
   if is_ident_start(ch) {
-    Ok(read_ident(c))
+    let text = read_ident(c)
+    if is_reserved_word(text) {
+      return Err(InvalidText("keyword used as field name"))
+    }
+    resolve_text_symbol(c, text)
+  } else if is_long_quote(c) {
+    read_long_strings(c, false)
   } else if ch == 39 {
     read_quoted_symbol(c)
   } else if ch == 34 {
@@ -323,10 +405,6 @@ fn parse_null_or_typed(
 ) -> Result[IonValue, IonError] {
   if ident != "null" {
     return Err(InvalidText(ident))
-  }
-  match skip_ws_comments(c) {
-    Err(e) => return Err(e)
-    Ok(_) => ()
   }
   if cursor_peek(c) == 46 {
     cursor_bump(c)
@@ -356,6 +434,9 @@ fn parse_null_or_typed(
 ///|
 fn parse_number_or_timestamp(c : TextCursor) -> Result[IonValue, IonError] {
   let start = c.i
+  if cursor_peek(c) == 43 && is_digit(cursor_peek_at(c, 1)) {
+    return Err(InvalidNumber("plus-signed number"))
+  }
   if cursor_peek(c) == 45 || cursor_peek(c) == 43 {
     cursor_bump(c)
   }
@@ -381,7 +462,25 @@ fn parse_number_or_timestamp(c : TextCursor) -> Result[IonValue, IonError] {
       cursor_bump(c)
     }
     let tok = slice_text(c.src, start, c.i)
-    let digits = strip_underscores(slice_text(c.src, start + 2, c.i))
+    let digits_start = if c.src[start].to_int() == 45 ||
+      c.src[start].to_int() == 43 {
+      start + 3
+    } else {
+      start + 2
+    }
+    let raw_digits = slice_text(c.src, digits_start, c.i)
+    if raw_digits.length() == 0 ||
+      raw_digits[0].to_int() == 95 ||
+      raw_digits[raw_digits.length() - 1].to_int() == 95 ||
+      str_has(raw_digits, 43) ||
+      str_has(raw_digits, 45) {
+      return Err(InvalidNumber(tok))
+    }
+    if str_contains_double_underscore(raw_digits) {
+      return Err(InvalidNumber(tok))
+    }
+    let digits = (if c.src[start].to_int() == 45 { "-" } else { "" }) +
+      strip_underscores(raw_digits)
     match bigint_from_radix_string(digits, 16) {
       Ok(v) => Ok(ion_bigint(v))
       Err(_) => Err(InvalidNumber(tok))
@@ -392,13 +491,34 @@ fn parse_number_or_timestamp(c : TextCursor) -> Result[IonValue, IonError] {
       cursor_bump(c)
     }
     let tok = slice_text(c.src, start, c.i)
-    let digits = strip_underscores(slice_text(c.src, start + 2, c.i))
+    let digits_start = if c.src[start].to_int() == 45 ||
+      c.src[start].to_int() == 43 {
+      start + 3
+    } else {
+      start + 2
+    }
+    let raw_digits = slice_text(c.src, digits_start, c.i)
+    if raw_digits.length() == 0 ||
+      raw_digits[0].to_int() == 95 ||
+      raw_digits[raw_digits.length() - 1].to_int() == 95 ||
+      str_has(raw_digits, 43) ||
+      str_has(raw_digits, 45) {
+      return Err(InvalidNumber(tok))
+    }
+    if str_contains_double_underscore(raw_digits) {
+      return Err(InvalidNumber(tok))
+    }
+    let digits = (if c.src[start].to_int() == 45 { "-" } else { "" }) +
+      strip_underscores(raw_digits)
     match bigint_from_radix_string(digits, 2) {
       Ok(v) => Ok(ion_bigint(v))
       Err(_) => Err(InvalidNumber(tok))
     }
   } else {
     while is_digit(cursor_peek(c)) || cursor_peek(c) == 95 {
+      cursor_bump(c)
+    }
+    if cursor_peek(c) == 84 && c.i - start == 4 {
       cursor_bump(c)
     }
     if cursor_peek(c) == 45 && is_digit(cursor_peek_at(c, 1)) {
@@ -452,13 +572,29 @@ fn parse_number_or_timestamp(c : TextCursor) -> Result[IonValue, IonError] {
           cursor_bump(c)
         }
       }
-      let tok = strip_underscores(slice_text(c.src, start, c.i))
+      let raw_tok = slice_text(c.src, start, c.i)
+      match validate_numeric_token(raw_tok) {
+        Err(e) => return Err(e)
+        Ok(_) => ()
+      }
+      let tok = strip_underscores(raw_tok)
+      let begin = if tok[0].to_int() == 45 { 1 } else { 0 }
+      if begin + 1 < tok.length() &&
+        tok[begin].to_int() == 48 &&
+        is_digit(tok[begin + 1].to_int()) {
+        return Err(InvalidNumber(tok))
+      }
       if seen_dec {
         match parse_decimal_text(tok) {
           Ok(d) => Ok(ion_decimal(d))
           Err(e) => Err(e)
         }
-      } else if seen_dot || seen_exp {
+      } else if seen_dot && !seen_exp {
+        match parse_decimal_text(tok) {
+          Ok(d) => Ok(ion_decimal(d))
+          Err(e) => Err(e)
+        }
+      } else if seen_exp {
         match parse_float_text(tok) {
           Ok(v) => Ok(ion_float(v))
           Err(e) => Err(e)
@@ -493,79 +629,33 @@ fn strip_underscores(text : String) -> String {
 
 ///|
 fn parse_float_text(text : String) -> Result[Double, IonError] {
-  if text == "nan" {
-    Ok(1.0 / 0.0 - 1.0 / 0.0)
-  } else if text == "+inf" || text == "inf" {
-    Ok(1.0 / 0.0)
-  } else if text == "-inf" {
-    Ok(0.0 - 1.0 / 0.0)
-  } else {
-    parse_float_manual(text)
+  Ok(@string.parse_double(text[:])) catch {
+    _ => Err(InvalidNumber(text))
   }
-}
-
-///|
-fn parse_float_manual(text : String) -> Result[Double, IonError] {
-  let mut i = 0
-  let mut sign = 1.0
-  if i < text.length() && text[i].to_int() == 45 {
-    sign = -1.0
-    i += 1
-  } else if i < text.length() && text[i].to_int() == 43 {
-    i += 1
-  }
-  let mut int_part = 0.0
-  let mut seen = false
-  while i < text.length() && is_digit(text[i].to_int()) {
-    seen = true
-    int_part = int_part * 10.0 + (text[i].to_int() - 48).to_double()
-    i += 1
-  }
-  let mut frac = 0.0
-  let mut scale = 1.0
-  if i < text.length() && text[i].to_int() == 46 {
-    i += 1
-    while i < text.length() && is_digit(text[i].to_int()) {
-      seen = true
-      scale = scale * 10.0
-      frac = frac * 10.0 + (text[i].to_int() - 48).to_double()
-      i += 1
-    }
-  }
-  let mut exp = 0
-  if i < text.length() && (text[i].to_int() == 101 || text[i].to_int() == 69) {
-    i += 1
-    match parse_signed_int(slice_text(text, i, text.length())) {
-      Ok(v) => {
-        exp = v
-        i = text.length()
-      }
-      Err(_) => return Err(InvalidNumber(text))
-    }
-  }
-  if !seen || i != text.length() {
-    return Err(InvalidNumber(text))
-  }
-  Ok(ldexp10(sign * (int_part + frac / scale), exp))
-}
-
-///|
-fn ldexp10(value : Double, exp : Int) -> Double {
-  let mut v = value
-  let mut n = exp
-  while n > 0 {
-    v = v * 10.0
-    n -= 1
-  }
-  while n < 0 {
-    v = v / 10.0
-    n += 1
-  }
-  v
 }
 
 ///|
 fn parse_atom(c : TextCursor, sexp : Bool) -> Result[IonValue, IonError] {
+  if c.depth >= 256 {
+    return Err(InvalidText("nesting limit exceeded"))
+  }
+  match skip_ws_comments(c) {
+    Ok(_) => ()
+    Err(e) => return Err(e)
+  }
+  let start = cursor_peek(c)
+  c.depth += 1
+  let result = parse_atom_inner(c, sexp)
+  c.depth -= 1
+  if (is_ident_start(start) || is_digit(start) || start == 43 || start == 45) &&
+    is_ident_part(cursor_peek(c)) {
+    return Err(InvalidText("invalid token boundary"))
+  }
+  result
+}
+
+///|
+fn parse_atom_inner(c : TextCursor, sexp : Bool) -> Result[IonValue, IonError] {
   match skip_ws_comments(c) {
     Err(e) => return Err(e)
     Ok(_) => ()
@@ -598,6 +688,11 @@ fn parse_atom(c : TextCursor, sexp : Bool) -> Result[IonValue, IonError] {
       Ok(v) => Ok(ion_string(v))
       Err(e) => Err(e)
     }
+  } else if is_long_quote(c) {
+    match read_long_strings(c, false) {
+      Ok(v) => Ok(ion_string(v))
+      Err(e) => Err(e)
+    }
   } else if ch == 39 {
     match read_quoted_symbol(c) {
       Ok(v) => Ok(ion_symbol(v))
@@ -619,12 +714,11 @@ fn parse_atom(c : TextCursor, sexp : Bool) -> Result[IonValue, IonError] {
       parse_null_or_typed(c, ident)
     } else if ident == "nan" {
       Ok(ion_float(1.0 / 0.0 - 1.0 / 0.0))
-    } else if ident == "+inf" || ident == "inf" {
-      Ok(ion_float(1.0 / 0.0))
-    } else if ident == "-inf" {
-      Ok(ion_float(0.0 - 1.0 / 0.0))
     } else {
-      Ok(ion_symbol(ident))
+      match resolve_text_symbol(c, ident) {
+        Ok(s) => Ok(ion_symbol(s))
+        Err(e) => Err(e)
+      }
     }
   } else if sexp && is_operator_char(ch) {
     Ok(ion_symbol(read_operator(c)))
@@ -652,7 +746,7 @@ fn parse_annotated_value(
     let save = c.i
     let name = if is_ident_start(cursor_peek(c)) {
       Some(read_ident(c))
-    } else if cursor_peek(c) == 39 {
+    } else if cursor_peek(c) == 39 && !is_long_quote(c) {
       match read_quoted_symbol(c) {
         Ok(v) => Some(v)
         Err(e) => return Err(e)
@@ -662,16 +756,25 @@ fn parse_annotated_value(
     }
     match name {
       Some(sym) => {
+        let quoted = c.src[save].to_int() == 39
         match skip_ws_comments(c) {
           Err(e) => return Err(e)
           Ok(_) => ()
         }
         if cursor_peek(c) == 58 && cursor_peek_at(c, 1) == 58 {
-          if sym.length() == 0 {
-            return Err(InvalidAnnotation("empty"))
+          if !quoted && is_reserved_word(sym) {
+            return Err(InvalidAnnotation("keyword used as annotation"))
           }
           cursor_bump(c)
           cursor_bump(c)
+          let sym = if quoted {
+            sym
+          } else {
+            match resolve_text_symbol(c, sym) {
+              Ok(v) => v
+              Err(e) => return Err(e)
+            }
+          }
           anns.push(sym)
         } else {
           c.i = save
@@ -693,45 +796,189 @@ fn parse_annotated_value(
 }
 
 ///|
-pub fn loads_text(text : String) -> Result[Array[IonValue], IonError] {
-  let c : TextCursor = { src: text, i: 0, }
+pub fn loads_text(
+  text : String,
+  catalog? : Array[SharedSymbolTable] = [],
+) -> Result[Array[IonValue], IonError] {
+  let c : TextCursor = { src: text, i: 0, depth: 0, table: symbol_table_new(), }
   let values : Array[IonValue] = []
-  let mut first = true
-  let mut running = true
-  while running {
+  while true {
     match skip_ws_comments(c) {
       Err(e) => return Err(e)
       Ok(_) => ()
     }
     if cursor_eof(c) {
-      running = false
-    } else {
-      match parse_annotated_value(c, false) {
-        Ok(v) => {
-          let is_version = match v.datum {
-            SymbolD(s) => s == "$ion_1_0"
-            _ => false
-          }
-          if first && is_version {
-            first = false
-          } else if v.is_symbol_table() {
-            first = false
-          } else {
-            first = false
-            values.push(v)
-          }
-        }
+      break
+    }
+    let start = c.i
+    let v = match parse_annotated_value(c, false) {
+      Ok(v) => v
+      Err(e) => return Err(e)
+    }
+    let token = slice_text(text, start, c.i)
+    if v.annotations.is_empty() &&
+      (token == "$ion_1_0" || token == "'$ion_1_0'") {
+      c.table.reset_locals()
+    } else if v.annotations.is_empty() && is_text_version_marker(token) {
+      return Err(InvalidText("unsupported Ion version"))
+    } else if v.is_symbol_table() {
+      match apply_local_table(c.table, v, catalog) {
+        Ok(_) => ()
         Err(e) => return Err(e)
       }
+    } else {
+      values.push(v)
     }
   }
   Ok(values)
 }
 
 ///|
-pub fn load_text(text : String) -> Result[IonValue, IonError] {
-  match loads_text(text) {
+pub fn load_text(
+  text : String,
+  catalog? : Array[SharedSymbolTable] = [],
+) -> Result[IonValue, IonError] {
+  match loads_text(text, catalog~) {
     Ok(vs) => if vs.length() == 0 { Err(EmptyDocument) } else { Ok(vs[0]) }
     Err(e) => Err(e)
   }
+}
+
+///|
+fn resolve_text_symbol(
+  c : TextCursor,
+  text : String,
+) -> Result[String, IonError] {
+  if !is_sid_text(text) {
+    return Ok(text)
+  }
+  match parse_signed_int(slice_text(text, 1, text.length())) {
+    Ok(sid) => c.table.name_of(sid)
+    Err(_) => Err(InvalidSymbol(text))
+  }
+}
+
+///|
+fn validate_numeric_token(text : String) -> Result[Unit, IonError] {
+  for i = 0; i < text.length(); i = i + 1 {
+    if text[i].to_int() == 95 &&
+      (
+        i == 0 ||
+        i + 1 == text.length() ||
+        !is_digit(text[i - 1].to_int()) ||
+        !is_digit(text[i + 1].to_int())
+      ) {
+      return Err(InvalidNumber(text))
+    }
+  }
+  Ok(())
+}
+
+///|
+fn str_contains_double_underscore(s : String) -> Bool {
+  for i = 1; i < s.length(); i = i + 1 {
+    if s[i - 1].to_int() == 95 && s[i].to_int() == 95 {
+      return true
+    }
+  }
+  false
+}
+
+///|
+fn skip_escaped_newline(c : TextCursor) -> Bool {
+  let ch = cursor_peek(c)
+  if ch != 10 && ch != 13 {
+    return false
+  }
+  cursor_bump(c)
+  if ch == 13 && cursor_peek(c) == 10 {
+    cursor_bump(c)
+  }
+  true
+}
+
+///|
+fn is_long_quote(c : TextCursor) -> Bool {
+  cursor_peek(c) == 39 &&
+  cursor_peek_at(c, 1) == 39 &&
+  cursor_peek_at(c, 2) == 39
+}
+
+///|
+fn read_long_strings(c : TextCursor, clob : Bool) -> Result[String, IonError] {
+  let out = StringBuilder()
+  while is_long_quote(c) {
+    c.i += 3
+    let mut closed = false
+    while !cursor_eof(c) {
+      if is_long_quote(c) {
+        c.i += 3
+        closed = true
+        break
+      }
+      let ch = cursor_peek(c)
+      if ch == 92 {
+        cursor_bump(c)
+        if skip_escaped_newline(c) {
+          continue
+        }
+        if clob && (cursor_peek(c) == 117 || cursor_peek(c) == 85) {
+          return Err(InvalidText("Unicode escape in clob"))
+        }
+        match read_escape(c) {
+          Ok(v) => out.write_char(v)
+          Err(e) => return Err(e)
+        }
+      } else {
+        if (ch < 32 && ch != 9 && ch != 10 && ch != 13) ||
+          ch == 127 ||
+          (clob && ch > 127) {
+          return Err(InvalidText("invalid long string character"))
+        }
+        cursor_bump(c)
+        if ch == 13 {
+          if cursor_peek(c) == 10 {
+            cursor_bump(c)
+          }
+          out.write_char('\n')
+        } else {
+          out.write_char(ch.unsafe_to_char())
+        }
+      }
+    }
+    if !closed {
+      return Err(InvalidText("unterminated long string"))
+    }
+    match skip_ws_comments(c) {
+      Ok(_) => ()
+      Err(e) => return Err(e)
+    }
+  }
+  Ok(out.to_string())
+}
+
+///|
+fn is_reserved_word(s : String) -> Bool {
+  s == "true" || s == "false" || s == "null" || s == "nan"
+}
+
+///|
+fn is_text_version_marker(s : String) -> Bool {
+  if !starts_with_at(s, 0, "$ion_") {
+    return false
+  }
+  let mut i = 5
+  let first = i
+  while i < s.length() && is_digit(s[i].to_int()) {
+    i += 1
+  }
+  if i == first || i >= s.length() || s[i].to_int() != 95 {
+    return false
+  }
+  i += 1
+  let second = i
+  while i < s.length() && is_digit(s[i].to_int()) {
+    i += 1
+  }
+  i > second && i == s.length()
 }

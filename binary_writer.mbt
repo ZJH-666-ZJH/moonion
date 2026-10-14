@@ -1,49 +1,38 @@
 ///|
 fn write_varuint(out : Array[Byte], value : Int) -> Unit {
-  let mut n = value
-  if n < 0 {
-    n = 0
-  }
   let tmp : Array[Int] = []
-  if n == 0 {
-    tmp.push(0)
-  } else {
-    while n > 0 {
-      tmp.push(n & 0x7F)
-      n = n >> 7
-    }
+  let mut n = value
+  tmp.push(n & 0x7F)
+  n = n >> 7
+  while n > 0 {
+    tmp.push(n & 0x7F)
+    n = n >> 7
   }
-  let mut i = tmp.length() - 1
-  while i >= 0 {
-    if i == 0 {
-      push_u8(out, tmp[i])
-    } else {
-      push_u8(out, tmp[i] | 0x80)
-    }
-    i -= 1
+  for i = tmp.length() - 1; i >= 0; i = i - 1 {
+    push_u8(out, tmp[i] | (if i == 0 { 0x80 } else { 0 }))
   }
 }
 
 ///|
 fn write_varint(out : Array[Byte], value : Int) -> Unit {
   let negative = value < 0
-  let mut n = if negative { 0 - value } else { value }
-  if n == 0 {
-    push_u8(out, 0)
-  } else {
-    let low = n & 0x3F
-    n = n >> 6
-    if n == 0 {
-      if negative {
-        push_u8(out, low | 0x40)
-      } else {
-        push_u8(out, low)
-      }
-    } else {
-      let first = if negative { low | 0xC0 } else { low | 0x80 }
-      push_u8(out, first)
-      write_varuint(out, n)
-    }
+  let mut n = value.to_int64()
+  if negative {
+    n = -n
+  }
+  let tail : Array[Int] = []
+  while n > 63L {
+    tail.push((n & 127L).to_int())
+    n = n >> 7
+  }
+  push_u8(
+    out,
+    n.to_int() |
+    (if negative { 0x40 } else { 0 }) |
+    (if tail.is_empty() { 0x80 } else { 0 }),
+  )
+  for i = tail.length() - 1; i >= 0; i = i - 1 {
+    push_u8(out, tail[i] | (if i == 0 { 0x80 } else { 0 }))
   }
 }
 
@@ -153,7 +142,7 @@ fn encode_datum(
     BoolD(v) => write_type_desc(out, TID_BOOL, if v { 1 } else { 0 })
     IntD(v) => encode_int(out, v)
     FloatD(v) =>
-      if v == 0.0 && !is_nan(v) && !is_inf(v) {
+      if v == 0.0 && bytes_to_array(f64_to_be_bytes(v))[0].to_int() == 0 {
         write_type_desc(out, TID_FLOAT, 0)
       } else {
         let raw = bytes_to_array(f64_to_be_bytes(v))
@@ -205,40 +194,24 @@ fn encode_symbol(out : Array[Byte], table : SymbolTable, name : String) -> Unit 
 
 ///|
 fn encode_decimal(out : Array[Byte], value : IonDecimal) -> Unit {
-  if value.coefficient.is_zero() && value.exponent == 0 {
-    write_type_desc(out, TID_DECIMAL, 0)
-  } else {
-    let inner : Array[Byte] = []
-    write_varint(inner, value.exponent)
-    let mag = magnitude_bytes(value.coefficient)
-    if mag.length() == 0 {
-      if value.coefficient.negative {
-        push_u8(inner, 0x80)
-      } else {
-        push_u8(inner, 0)
-      }
-    } else {
-      for b in mag {
-        inner.push(b)
-      }
-      if value.coefficient.negative {
-        inner[inner.length() - mag.length()] = (inner[inner.length() -
-        mag.length()].to_int() |
-        0x80).to_byte()
-      }
-    }
-    write_type_desc(out, TID_DECIMAL, inner.length())
-    for b in inner {
-      out.push(b)
-    }
+  let inner : Array[Byte] = []
+  write_decimal_payload(inner, value)
+  write_type_desc(out, TID_DECIMAL, inner.length())
+  for b in inner {
+    out.push(b)
   }
 }
 
 ///|
 fn encode_timestamp(out : Array[Byte], ts : IonTimestamp) -> Unit {
   let inner : Array[Byte] = []
+  let ts = if ts.offset_unknown {
+    ts
+  } else {
+    shift_timestamp(ts, -ts.offset_minutes)
+  }
   if ts.offset_unknown {
-    write_varint(inner, -0)
+    push_u8(inner, 0xC0)
   } else {
     write_varint(inner, ts.offset_minutes)
   }
@@ -382,15 +355,22 @@ fn collect_value_symbols(table : SymbolTable, value : IonValue) -> Unit {
 fn write_decimal_payload(out : Array[Byte], value : IonDecimal) -> Unit {
   write_varint(out, value.exponent)
   let mag = magnitude_bytes(value.coefficient)
-  if mag.length() == 0 {
-    push_u8(out, if value.coefficient.negative { 0x80 } else { 0 })
-  } else {
-    for b in mag {
-      out.push(b)
+  let sign = if value.coefficient.negative { 0x80 } else { 0 }
+  if mag.is_empty() {
+    if sign != 0 {
+      push_u8(out, sign)
     }
-    if value.coefficient.negative {
-      let idx = out.length() - mag.length()
-      out[idx] = (out[idx].to_int() | 0x80).to_byte()
+  } else {
+    // Signed Int has a separate sign bit, unlike unsigned integer magnitude.
+    if (mag[0].to_int() & 0x80) != 0 {
+      push_u8(out, sign)
+    }
+    for i = 0; i < mag.length(); i = i + 1 {
+      push_u8(
+        out,
+        mag[i].to_int() |
+        (if i == 0 && (mag[0].to_int() & 0x80) == 0 { sign } else { 0 }),
+      )
     }
   }
 }

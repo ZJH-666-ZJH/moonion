@@ -36,7 +36,7 @@ pub fn timestamp_year(year : Int) -> Result[IonTimestamp, IonError] {
       second: 0,
       fraction: decimal_from_int(0),
       offset_minutes: 0,
-      offset_unknown: false,
+      offset_unknown: true,
       precision: Year,
     })
   }
@@ -150,9 +150,25 @@ pub fn timestamp_of(
       }
     }
   }
-  if !offset_unknown && (offset_minutes < -24 * 60 || offset_minutes > 24 * 60) {
+  if !offset_unknown &&
+    (offset_minutes < -23 * 60 - 59 || offset_minutes > 23 * 60 + 59) {
     return Err(InvalidTimestamp("offset"))
   }
+  if precision == Fractional &&
+    (
+      fraction.coefficient.negative ||
+      fraction.exponent >= 0 ||
+      fraction.exponent < -4096 ||
+      fraction.coefficient.to_decimal_string().length() > -fraction.exponent
+    ) {
+    return Err(
+      InvalidTimestamp("fraction must be in [0,1) with negative exponent"),
+    )
+  }
+  let offset_unknown = offset_unknown ||
+    precision == Year ||
+    precision == Month ||
+    precision == Day
   Ok({
     year,
     month,
@@ -257,13 +273,49 @@ pub fn IonTimestamp::to_ion_text(self : IonTimestamp) -> String {
 ///|
 fn fraction_digits(frac : IonDecimal) -> String {
   let s = frac.coefficient.to_decimal_string()
-  if s == "0" {
-    "0"
-  } else if s[0].to_int() == 45 {
-    slice_text(s, 1, s.length())
-  } else {
-    s
+  let out = StringBuilder()
+  for i = s.length(); i < -frac.exponent; i = i + 1 {
+    out.write_char('0')
   }
+  out.write_string(s)
+  out.to_string()
+}
+
+///|
+// Ion binary stores the date/time fields in UTC; the public model uses local time.
+fn shift_timestamp(ts : IonTimestamp, minutes : Int) -> IonTimestamp {
+  if ts.precision == Year || ts.precision == Month || ts.precision == Day {
+    return ts
+  }
+  let mut total = ts.hour * 60 + ts.minute + minutes
+  let mut year = ts.year
+  let mut month = ts.month
+  let mut day = ts.day
+  while total < 0 {
+    total += 1440
+    day -= 1
+    if day == 0 {
+      month -= 1
+      if month == 0 {
+        month = 12
+        year -= 1
+      }
+      day = days_in_month(year, month)
+    }
+  }
+  while total >= 1440 {
+    total -= 1440
+    day += 1
+    if day > days_in_month(year, month) {
+      day = 1
+      month += 1
+      if month == 13 {
+        month = 1
+        year += 1
+      }
+    }
+  }
+  { ..ts, year, month, day, hour: total / 60, minute: total % 60, }
 }
 
 ///|
@@ -312,7 +364,7 @@ pub fn parse_timestamp_text(text : String) -> Result[IonTimestamp, IonError] {
     Ok(v) => v
     Err(_) => return Err(InvalidTimestamp(text))
   }
-  if text.length() == 11 && text[10].to_int() == 84 {
+  if text.length() == 10 || (text.length() == 11 && text[10].to_int() == 84) {
     return timestamp_of(
       year,
       month,
@@ -406,7 +458,7 @@ fn parse_fixed_digits(
 
 ///|
 fn parse_offset(text : String) -> Result[(Int, Bool), IonError] {
-  if text == "Z" || text == "z" {
+  if text == "Z" {
     Ok((0, false))
   } else if text == "-00:00" {
     Ok((0, true))
@@ -420,6 +472,9 @@ fn parse_offset(text : String) -> Result[(Int, Bool), IonError] {
     let mm = match parse_fixed_digits(text, 4, 2) {
       Ok(v) => v
       Err(_) => return Err(InvalidTimestamp(text))
+    }
+    if hh > 23 || mm > 59 {
+      return Err(InvalidTimestamp(text))
     }
     let mut total = hh * 60 + mm
     if text[0].to_int() == 45 {

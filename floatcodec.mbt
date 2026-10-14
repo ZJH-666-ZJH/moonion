@@ -91,41 +91,7 @@ pub fn f64_from_be4(b0 : Int, b1 : Int, b2 : Int, b3 : Int) -> Double {
 
 ///|
 fn f64_from_bits(bits : Int64) -> Double {
-  let sign = bits < 0L
-  let exp = ((bits >> 52) & 2047L).to_int()
-  let frac = bits & 4503599627370495L
-  if exp == 0 {
-    if frac == 0L {
-      if sign {
-        -0.0
-      } else {
-        0.0
-      }
-    } else {
-      let mag = ldexp2(frac.to_double() / 4503599627370496.0, -1022)
-      if sign {
-        0.0 - mag
-      } else {
-        mag
-      }
-    }
-  } else if exp == 2047 {
-    let inf = 1.0 / 0.0
-    if frac != 0L {
-      inf - inf
-    } else if sign {
-      0.0 - inf
-    } else {
-      inf
-    }
-  } else {
-    let mag = ldexp2(1.0 + frac.to_double() / 4503599627370496.0, exp - 1023)
-    if sign {
-      0.0 - mag
-    } else {
-      mag
-    }
-  }
+  bits.reinterpret_as_double()
 }
 
 ///|
@@ -143,43 +109,5 @@ pub fn f64_to_be_bytes(value : Double) -> Bytes {
 
 ///|
 fn f64_to_bits(value : Double) -> Int64 {
-  if is_nan(value) {
-    0x7FF8000000000000L
-  } else if is_inf(value) {
-    if value < 0.0 {
-      0xFFF0000000000000L
-    } else {
-      0x7FF0000000000000L
-    }
-  } else if value == 0.0 {
-    if 1.0 / value < 0.0 {
-      0x8000000000000000L
-    } else {
-      0L
-    }
-  } else {
-    let mut sign = 0L
-    let mut mag = value
-    if mag < 0.0 {
-      sign = 1L << 63
-      mag = 0.0 - mag
-    }
-    let mut exp = 0
-    while mag >= 2.0 && exp < 1023 {
-      mag = mag / 2.0
-      exp += 1
-    }
-    while mag < 1.0 && exp > -1022 {
-      mag = mag * 2.0
-      exp -= 1
-    }
-    if mag < 1.0 {
-      let frac = (mag * 4503599627370496.0).to_int64()
-      sign | (frac & 4503599627370495L)
-    } else {
-      let biased = exp + 1023
-      let frac = ((mag - 1.0) * 4503599627370496.0).to_int64()
-      sign | (biased.to_int64() << 52) | (frac & 4503599627370495L)
-    }
-  }
+  value.reinterpret_as_int64()
 }

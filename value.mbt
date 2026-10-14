@@ -256,11 +256,7 @@ pub fn IonValue::field(self : IonValue, name : String) -> IonValue? {
 
 ///|
 pub fn IonValue::is_symbol_table(self : IonValue) -> Bool {
-  let mut found = false
-  for a in self.annotations {
-    if a == "$ion_symbol_table" {
-      found = true
-    }
-  }
-  found
+  self.annotations.length() > 0 &&
+  self.annotations[0] == "$ion_symbol_table" &&
+  self.datum is StructD(_)
 }

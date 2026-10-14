@@ -16,7 +16,9 @@ pub fn bigint_from_int(value : Int) -> BigInt {
 
 ///|
 pub fn bigint_from_int64(value : Int64) -> BigInt {
-  if value == 0L {
+  if value == -9223372036854775808L {
+    { negative: true, digits: Bytes::from_array([0x80, 0, 0, 0, 0, 0, 0, 0]), }
+  } else if value == 0L {
     bigint_zero()
   } else {
     let negative = value < 0L
@@ -79,7 +81,9 @@ pub fn BigInt::to_int64(self : BigInt) -> Int64? {
       n = (n << 8) | b.to_int().to_int64()
     }
     if self.negative {
-      if n < 0L {
+      if n == -9223372036854775808L {
+        Some(n)
+      } else if n < 0L {
         None
       } else {
         Some(0L - n)

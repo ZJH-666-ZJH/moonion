@@ -37,7 +37,7 @@ pub fn system_max_id() -> Int {
 
 ///|
 pub(all) struct SymbolTable {
-  locals : Array[String]
+  locals : Array[String?]
 }
 
 ///|
@@ -53,7 +53,7 @@ pub fn SymbolTable::intern(self : SymbolTable, name : String) -> Int {
       let mut found = -1
       let mut i = 0
       while i < self.locals.length() {
-        if self.locals[i] == name {
+        if self.locals[i] == Some(name) {
           found = i
         }
         i += 1
@@ -61,7 +61,7 @@ pub fn SymbolTable::intern(self : SymbolTable, name : String) -> Int {
       if found >= 0 {
         system_max_id() + 1 + found
       } else {
-        self.locals.push(name)
+        self.locals.push(Some(name))
         system_max_id() + self.locals.length()
       }
     }
@@ -70,7 +70,7 @@ pub fn SymbolTable::intern(self : SymbolTable, name : String) -> Int {
 
 ///|
 pub fn SymbolTable::define_local(self : SymbolTable, name : String) -> Unit {
-  self.locals.push(name)
+  self.locals.push(Some(name))
 }
 
 ///|
@@ -79,14 +79,17 @@ pub fn SymbolTable::name_of(
   id : Int,
 ) -> Result[String, IonError] {
   if id == 0 {
-    Ok("")
+    Err(InvalidSymbol("unresolved SID 0"))
   } else {
     match system_symbol_name(id) {
       Some(name) => Ok(name)
       None => {
         let idx = id - system_max_id() - 1
         if idx >= 0 && idx < self.locals.length() {
-          Ok(self.locals[idx])
+          match self.locals[idx] {
+            Some(name) => Ok(name)
+            None => Err(InvalidSymbol("unresolved id=" + id.to_string()))
+          }
         } else {
           Err(InvalidSymbol("id=" + id.to_string()))
         }
@@ -106,14 +109,24 @@ pub fn SymbolTable::reset_locals(self : SymbolTable) -> Unit {
 pub fn SymbolTable::local_names(self : SymbolTable) -> Array[String] {
   let out : Array[String] = []
   for name in self.locals {
-    out.push(name)
+    match name {
+      Some(s) => out.push(s)
+      None => out.push("")
+    }
   }
   out
 }
 
 ///|
 pub fn needs_quoting(name : String) -> Bool {
-  if name.length() == 0 {
+  if name == "true" ||
+    name == "false" ||
+    name == "null" ||
+    name == "nan" ||
+    is_text_version_marker(name) ||
+    is_sid_text(name) {
+    true
+  } else if name.length() == 0 {
     true
   } else if !is_ident_start(name[0].to_int()) {
     true
@@ -142,11 +155,30 @@ pub fn quote_symbol(name : String) -> String {
       let c = name[i].to_int()
       if c == 39 || c == 92 {
         out.write_char('\\')
+        out.write_char(c.unsafe_to_char())
+      } else if c < 32 || c == 127 {
+        out.write_string("\\x")
+        out.write_char(nibble_char((c >> 4) & 15, false))
+        out.write_char(nibble_char(c & 15, false))
+      } else {
+        out.write_char(c.unsafe_to_char())
       }
-      out.write_char(c.unsafe_to_char())
       i += 1
     }
     out.write_char('\'')
     out.to_string()
   }
+}
+
+///|
+fn is_sid_text(name : String) -> Bool {
+  if name.length() < 2 || name[0].to_int() != 36 {
+    return false
+  }
+  for i = 1; i < name.length(); i = i + 1 {
+    if !is_digit(name[i].to_int()) {
+      return false
+    }
+  }
+  true
 }

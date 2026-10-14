@@ -47,17 +47,20 @@ const TID_ANNOT : Int = 14
 priv struct BinCursor {
   data : Array[Byte]
   mut i : Int
+  mut limit : Int
+  mut depth : Int
+  catalog : Array[SharedSymbolTable]
   table : SymbolTable
 }
 
 ///|
 fn bin_eof(c : BinCursor) -> Bool {
-  c.i >= c.data.length()
+  c.i >= c.limit
 }
 
 ///|
 fn bin_need(c : BinCursor, n : Int) -> Result[Unit, IonError] {
-  if c.i + n > c.data.length() {
+  if n < 0 || n > c.limit - c.i {
     Err(UnexpectedEof)
   } else {
     Ok(())
@@ -80,8 +83,11 @@ fn read_varuint_at(c : BinCursor) -> Result[Int64, IonError] {
     if count > 10 {
       return Err(InvalidBinary("VarUInt too long"))
     }
+    if n > 0x7FFFFFFFFFFFFFFFL >> 7 {
+      return Err(InvalidBinary("variable integer overflow"))
+    }
     n = (n << 7) | (b & 0x7F).to_int64()
-    if (b & 0x80) == 0 {
+    if (b & 0x80) != 0 {
       done = true
     }
   }
@@ -98,7 +104,7 @@ fn read_varint_at(c : BinCursor) -> Result[Int64, IonError] {
   c.i += 1
   let negative = (b0 & 0x40) != 0
   let mut n = (b0 & 0x3F).to_int64()
-  let mut more = (b0 & 0x80) != 0
+  let mut more = (b0 & 0x80) == 0
   let mut count = 1
   while more {
     match bin_need(c, 1) {
@@ -111,8 +117,11 @@ fn read_varint_at(c : BinCursor) -> Result[Int64, IonError] {
     if count > 10 {
       return Err(InvalidBinary("VarInt too long"))
     }
+    if n > 0x7FFFFFFFFFFFFFFFL >> 7 {
+      return Err(InvalidBinary("variable integer overflow"))
+    }
     n = (n << 7) | (b & 0x7F).to_int64()
-    more = (b & 0x80) != 0
+    more = (b & 0x80) == 0
   }
   if negative {
     Ok(0L - n)
@@ -142,11 +151,19 @@ fn parse_type_desc(c : BinCursor) -> Result[(Int, Int, Bool), IonError] {
   c.i += 1
   let tid = (td >> 4) & 0x0F
   let low = td & 0x0F
+  if tid == TID_BOOL && low != 0 && low != 1 && low != 15 {
+    return Err(InvalidBinary("boolean descriptor"))
+  }
   if low == 15 {
     Ok((tid, 0, true))
   } else if low == 14 {
     match read_varuint_at(c) {
-      Ok(n) => Ok((tid, n.to_int(), false))
+      Ok(n) =>
+        if n > 2147483647L {
+          Err(InvalidBinary("length overflow"))
+        } else {
+          Ok((tid, n.to_int(), false))
+        }
       Err(e) => Err(e)
     }
   } else {
@@ -155,20 +172,73 @@ fn parse_type_desc(c : BinCursor) -> Result[(Int, Int, Bool), IonError] {
 }
 
 ///|
-fn parse_binary_value(c : BinCursor) -> Result[IonValue, IonError] {
+fn skip_binary_nop(c : BinCursor) -> Result[Bool, IonError] {
+  if bin_eof(c) || c.data[c.i].to_int() >> 4 != 0 || c.data[c.i].to_int() == 15 {
+    return Ok(false)
+  }
   match parse_type_desc(c) {
     Err(e) => Err(e)
-    Ok((tid, len, is_null)) =>
-      if tid == TID_NULL && is_null {
-        Ok(ion_null(NullT))
-      } else if tid == TID_NULL {
-        c.i += len
-        Ok(ion_null(NullT))
-      } else if tid == TID_ANNOT {
-        parse_annotation_wrapper(c, len)
-      } else {
-        parse_typed_payload(c, tid, len, is_null)
+    Ok((_, len, _)) =>
+      match read_exact(c, len) {
+        Ok(_) => Ok(true)
+        Err(e) => Err(e)
       }
+  }
+}
+
+///|
+fn parse_binary_value(c : BinCursor) -> Result[IonValue, IonError] {
+  if c.depth >= 256 {
+    return Err(InvalidBinary("nesting limit exceeded"))
+  }
+  let (tid, raw_len, is_null) = match parse_type_desc(c) {
+    Ok(v) => v
+    Err(e) => return Err(e)
+  }
+  if tid == 15 || (tid == TID_ANNOT && is_null) {
+    return Err(InvalidBinary("reserved type descriptor"))
+  }
+  let len = if tid == TID_STRUCT && raw_len == 1 && !is_null {
+    match read_varuint_at(c) {
+      Ok(n) =>
+        if n > 2147483647L {
+          return Err(InvalidBinary("length overflow"))
+        } else {
+          n.to_int()
+        }
+      Err(e) => return Err(e)
+    }
+  } else {
+    raw_len
+  }
+  let payload_len = if tid == TID_BOOL || is_null { 0 } else { len }
+  match bin_need(c, payload_len) {
+    Err(e) => return Err(e)
+    Ok(_) => ()
+  }
+  let outer_limit = c.limit
+  let end = c.i + payload_len
+  c.limit = end
+  c.depth += 1
+  let result = if tid == TID_NULL && is_null {
+    Ok(ion_null(NullT))
+  } else if tid == TID_NULL {
+    Err(InvalidBinary("NOP cannot be a value"))
+  } else if tid == TID_ANNOT {
+    parse_annotation_wrapper(c, len)
+  } else {
+    parse_typed_payload(c, tid, len, is_null)
+  }
+  c.limit = outer_limit
+  c.depth -= 1
+  match result {
+    Ok(v) =>
+      if c.i == end {
+        Ok(v)
+      } else {
+        Err(InvalidBinary("payload length mismatch"))
+      }
+    Err(e) => Err(e)
   }
 }
 
@@ -179,23 +249,41 @@ fn parse_annotation_wrapper(
 ) -> Result[IonValue, IonError] {
   let end = c.i + len
   let annot_len = match read_varuint_at(c) {
-    Ok(n) => n.to_int()
+    Ok(n) =>
+      if n > 2147483647L {
+        return Err(InvalidBinary("integer overflow"))
+      } else {
+        n.to_int()
+      }
     Err(e) => return Err(e)
   }
   let annot_end = c.i + annot_len
-  if annot_end > end {
+  if annot_len <= 0 || annot_len > end - c.i {
     return Err(InvalidBinary("annotation length"))
   }
+  let outer_limit = c.limit
+  c.limit = annot_end
   let anns : Array[String] = []
   while c.i < annot_end {
     let sid = match read_varuint_at(c) {
-      Ok(n) => n.to_int()
+      Ok(n) =>
+        if n > 2147483647L {
+          return Err(InvalidBinary("integer overflow"))
+        } else {
+          n.to_int()
+        }
       Err(e) => return Err(e)
     }
     match c.table.name_of(sid) {
       Ok(name) => anns.push(name)
       Err(e) => return Err(e)
     }
+  }
+  c.limit = outer_limit
+  if c.i >= end ||
+    c.data[c.i].to_int() >> 4 == TID_ANNOT ||
+    (c.data[c.i].to_int() >> 4 == TID_NULL && c.data[c.i].to_int() != 15) {
+    return Err(InvalidBinary("invalid annotation value"))
   }
   match parse_binary_value(c) {
     Ok(v) => {
@@ -242,11 +330,21 @@ fn parse_typed_payload(
       Err(InvalidBinary("bool"))
     }
   } else if tid == TID_POSINT || tid == TID_NEGINT {
+    if tid == TID_NEGINT && len == 0 {
+      return Err(InvalidBinary("negative integer zero"))
+    }
     if len == 0 {
       Ok(ion_int(0))
     } else {
       match read_exact(c, len) {
-        Ok(mag) => Ok(ion_bigint(bigint_from_magnitude(tid == TID_NEGINT, mag)))
+        Ok(mag) => {
+          let n = bigint_from_magnitude(tid == TID_NEGINT, mag)
+          if tid == TID_NEGINT && n.is_zero() {
+            Err(InvalidBinary("negative integer zero"))
+          } else {
+            Ok(ion_bigint(n))
+          }
+        }
         Err(e) => Err(e)
       }
     }
@@ -300,10 +398,14 @@ fn parse_typed_payload(
     parse_timestamp_payload(c, len)
   } else if tid == TID_SYMBOL {
     if len == 0 {
-      Ok(ion_symbol(""))
+      Err(InvalidSymbol("unresolved SID 0"))
     } else {
       match read_exact(c, len) {
         Ok(raw) => {
+          if raw.length() > 4 ||
+            (raw.length() == 4 && bytes_to_array(raw)[0].to_int() > 127) {
+            return Err(InvalidSymbol("SID overflow"))
+          }
           let sid = bytes_to_int(raw)
           match c.table.name_of(sid) {
             Ok(name) => Ok(ion_symbol(name))
@@ -336,6 +438,11 @@ fn parse_typed_payload(
     let end = c.i + len
     let items : Array[IonValue] = []
     while c.i < end {
+      match skip_binary_nop(c) {
+        Ok(true) => continue
+        Ok(false) => ()
+        Err(e) => return Err(e)
+      }
       match parse_binary_value(c) {
         Ok(v) => items.push(v)
         Err(e) => return Err(e)
@@ -375,7 +482,12 @@ fn parse_decimal_payload(
   } else {
     let end = c.i + len
     let exp = match read_varint_at(c) {
-      Ok(v) => v.to_int()
+      Ok(v) =>
+        if v < -2147483648L || v > 2147483647L {
+          return Err(InvalidBinary("decimal exponent overflow"))
+        } else {
+          v.to_int()
+        }
       Err(e) => return Err(e)
     }
     let mag = slice_bytes(c.data, c.i, end)
@@ -389,7 +501,10 @@ fn parse_decimal_payload(
     Ok(
       ion_decimal(
         decimal_from_parts(
-          bigint_from_magnitude(negative, array_to_bytes(arr)),
+          {
+            negative,
+            digits: bigint_from_magnitude(false, array_to_bytes(arr)).digits,
+          },
           exp,
         ),
       ),
@@ -403,13 +518,24 @@ fn parse_timestamp_payload(
   len : Int,
 ) -> Result[IonValue, IonError] {
   let end = c.i + len
+  let offset_start = c.i
   let off = match read_varint_at(c) {
-    Ok(v) => v.to_int()
+    Ok(v) =>
+      if v < -2147483648L || v > 2147483647L {
+        return Err(InvalidBinary("integer overflow"))
+      } else {
+        v.to_int()
+      }
     Err(e) => return Err(e)
   }
-  let offset_unknown = false
+  let offset_unknown = off == 0 && (c.data[offset_start].to_int() & 0x40) != 0
   let year = match read_varuint_at(c) {
-    Ok(v) => v.to_int()
+    Ok(v) =>
+      if v < -2147483648L || v > 2147483647L {
+        return Err(InvalidBinary("integer overflow"))
+      } else {
+        v.to_int()
+      }
     Err(e) => return Err(e)
   }
   let mut month = 1
@@ -420,32 +546,57 @@ fn parse_timestamp_payload(
   let mut precision = Year
   if c.i < end {
     month = match read_varuint_at(c) {
-      Ok(v) => v.to_int()
+      Ok(v) =>
+        if v < -2147483648L || v > 2147483647L {
+          return Err(InvalidBinary("integer overflow"))
+        } else {
+          v.to_int()
+        }
       Err(e) => return Err(e)
     }
     precision = Month
   }
   if c.i < end {
     day = match read_varuint_at(c) {
-      Ok(v) => v.to_int()
+      Ok(v) =>
+        if v < -2147483648L || v > 2147483647L {
+          return Err(InvalidBinary("integer overflow"))
+        } else {
+          v.to_int()
+        }
       Err(e) => return Err(e)
     }
     precision = Day
   }
   if c.i < end {
     hour = match read_varuint_at(c) {
-      Ok(v) => v.to_int()
+      Ok(v) =>
+        if v < -2147483648L || v > 2147483647L {
+          return Err(InvalidBinary("integer overflow"))
+        } else {
+          v.to_int()
+        }
       Err(e) => return Err(e)
     }
     minute = match read_varuint_at(c) {
-      Ok(v) => v.to_int()
+      Ok(v) =>
+        if v < -2147483648L || v > 2147483647L {
+          return Err(InvalidBinary("integer overflow"))
+        } else {
+          v.to_int()
+        }
       Err(e) => return Err(e)
     }
     precision = Minute
   }
   if c.i < end {
     second = match read_varuint_at(c) {
-      Ok(v) => v.to_int()
+      Ok(v) =>
+        if v < -2147483648L || v > 2147483647L {
+          return Err(InvalidBinary("integer overflow"))
+        } else {
+          v.to_int()
+        }
       Err(e) => return Err(e)
     }
     precision = Second
@@ -469,7 +620,17 @@ fn parse_timestamp_payload(
     timestamp_of(
       year, month, day, hour, minute, second, frac, off, offset_unknown, precision,
     ) {
-    Ok(ts) => Ok(ion_timestamp(ts))
+    Ok(ts) => {
+      if !offset_unknown &&
+        (precision == Year || precision == Month || precision == Day) {
+        return Err(InvalidBinary("coarse timestamp requires unknown offset"))
+      }
+      let local_ts = if offset_unknown { ts } else { shift_timestamp(ts, off) }
+      if local_ts.year < 1 || local_ts.year > 9999 {
+        return Err(InvalidTimestamp("local year"))
+      }
+      Ok(ion_timestamp(local_ts))
+    }
     Err(e) => Err(e)
   }
 }
@@ -480,7 +641,17 @@ fn parse_struct_payload(c : BinCursor, len : Int) -> Result[IonValue, IonError] 
   let fields : Array[IonField] = []
   while c.i < end {
     let sid = match read_varuint_at(c) {
-      Ok(v) => v.to_int()
+      Ok(v) =>
+        if v < -2147483648L || v > 2147483647L {
+          return Err(InvalidBinary("integer overflow"))
+        } else {
+          v.to_int()
+        }
+      Err(e) => return Err(e)
+    }
+    match skip_binary_nop(c) {
+      Ok(true) => continue
+      Ok(false) => ()
       Err(e) => return Err(e)
     }
     let name = match c.table.name_of(sid) {
@@ -517,10 +688,16 @@ fn expect_bvm(c : BinCursor) -> Result[Unit, IonError] {
 }
 
 ///|
-pub fn loads_binary(data : Bytes) -> Result[Array[IonValue], IonError] {
+pub fn loads_binary(
+  data : Bytes,
+  catalog? : Array[SharedSymbolTable] = [],
+) -> Result[Array[IonValue], IonError] {
   let c : BinCursor = {
     data: bytes_to_array(data),
     i: 0,
+    limit: data.length(),
+    depth: 0,
+    catalog,
     table: symbol_table_new(),
   }
   match expect_bvm(c) {
@@ -529,10 +706,25 @@ pub fn loads_binary(data : Bytes) -> Result[Array[IonValue], IonError] {
   }
   let values : Array[IonValue] = []
   while !bin_eof(c) {
+    if c.data[c.i].to_int() == 0xE0 {
+      match expect_bvm(c) {
+        Err(e) => return Err(e)
+        Ok(_) => c.table.reset_locals()
+      }
+      continue
+    }
+    match skip_binary_nop(c) {
+      Ok(true) => continue
+      Ok(false) => ()
+      Err(e) => return Err(e)
+    }
     match parse_binary_value(c) {
       Ok(v) =>
         if v.is_symbol_table() {
-          apply_local_table(c.table, v)
+          match apply_local_table(c.table, v, c.catalog) {
+            Err(e) => return Err(e)
+            Ok(_) => ()
+          }
         } else {
           values.push(v)
         }
@@ -543,28 +735,11 @@ pub fn loads_binary(data : Bytes) -> Result[Array[IonValue], IonError] {
 }
 
 ///|
-fn apply_local_table(table : SymbolTable, value : IonValue) -> Unit {
-  table.reset_locals()
-  match value.field("symbols") {
-    Some(list) =>
-      match list.datum {
-        ListD(items) =>
-          for item in items {
-            match item.datum {
-              StringD(s) => table.define_local(s)
-              SymbolD(s) => table.define_local(s)
-              _ => ()
-            }
-          }
-        _ => ()
-      }
-    None => ()
-  }
-}
-
-///|
-pub fn load_binary(data : Bytes) -> Result[IonValue, IonError] {
-  match loads_binary(data) {
+pub fn load_binary(
+  data : Bytes,
+  catalog? : Array[SharedSymbolTable] = [],
+) -> Result[IonValue, IonError] {
+  match loads_binary(data, catalog~) {
     Ok(vs) => if vs.length() == 0 { Err(EmptyDocument) } else { Ok(vs[0]) }
     Err(e) => Err(e)
   }

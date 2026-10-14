@@ -23,14 +23,60 @@ pub fn IonDecimal::is_zero(self : IonDecimal) -> Bool {
 pub fn IonDecimal::to_ion_text(self : IonDecimal) -> String {
   let coeff = self.coefficient.to_decimal_string()
   if self.exponent == 0 {
-    coeff + "d0"
+    (if self.coefficient.negative && self.coefficient.is_zero() {
+      "-0"
+    } else {
+      coeff
+    }) +
+    "d0"
   } else {
-    coeff + "d" + self.exponent.to_string()
+    (if self.coefficient.negative && self.coefficient.is_zero() {
+      "-0"
+    } else {
+      coeff
+    }) +
+    "d" +
+    self.exponent.to_string()
   }
 }
 
 ///|
 pub fn parse_decimal_text(text : String) -> Result[IonDecimal, IonError] {
+  if text.length() == 0 {
+    return Err(InvalidDecimal(text))
+  }
+  let begin = if text[0].to_int() == 45 { 1 } else { 0 }
+  if begin >= text.length() || !is_digit(text[begin].to_int()) {
+    return Err(InvalidDecimal(text))
+  }
+  if begin + 1 < text.length() &&
+    text[begin].to_int() == 48 &&
+    is_digit(text[begin + 1].to_int()) {
+    return Err(InvalidDecimal(text))
+  }
+  let mut exp_digits = 0
+  let mut exp_started = false
+  for idx = 0; idx < text.length(); idx = idx + 1 {
+    let ch = text[idx].to_int()
+    if ch == 95 &&
+      (
+        idx == 0 ||
+        idx + 1 == text.length() ||
+        !is_digit(text[idx - 1].to_int()) ||
+        !is_digit(text[idx + 1].to_int())
+      ) {
+      return Err(InvalidDecimal(text))
+    }
+    if exp_started && is_digit(ch) {
+      exp_digits += 1
+    }
+    if ch == 100 || ch == 68 {
+      exp_started = true
+    }
+  }
+  if exp_started && exp_digits == 0 {
+    return Err(InvalidDecimal(text))
+  }
   let mut i = 0
   if i < text.length() && (text[i].to_int() == 43 || text[i].to_int() == 45) {
     i += 1
@@ -109,6 +155,14 @@ pub fn parse_decimal_text(text : String) -> Result[IonDecimal, IonError] {
       Err(_) => return Err(InvalidDecimal(text))
     }
   }
+  if exp < -2147483648 + frac {
+    return Err(InvalidDecimal(text))
+  }
+  let coeff = if sign == "-" && coeff.is_zero() {
+    { ..coeff, negative: true, }
+  } else {
+    coeff
+  }
   Ok({ coefficient: coeff, exponent: exp - frac, })
 }
 
@@ -138,12 +192,18 @@ fn parse_signed_int(text : String) -> Result[Int, IonError] {
     if !is_digit(c) {
       return Err(InvalidNumber(text))
     }
-    n = n * 10 + (c - 48)
+    let digit = c - 48
+    // Accumulate negative to represent Int::min_value without overflow.
+    let limit = if negative { -2147483648 } else { -2147483647 }
+    if n < limit / 10 || (n == limit / 10 && digit > -(limit % 10)) {
+      return Err(InvalidNumber(text))
+    }
+    n = n * 10 - digit
     i += 1
   }
   if negative {
-    Ok(0 - n)
-  } else {
     Ok(n)
+  } else {
+    Ok(0 - n)
   }
 }

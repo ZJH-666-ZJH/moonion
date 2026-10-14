@@ -126,7 +126,7 @@ fn utf8_decode(data : Bytes) -> Result[String, IonError] {
         return Err(InvalidUtf8)
       }
       let code = ((b0 & 0x0F) << 12) | ((b1 & 0x3F) << 6) | (b2 & 0x3F)
-      if code >= 0xD800 && code <= 0xDFFF {
+      if code < 0x800 || (code >= 0xD800 && code <= 0xDFFF) {
         return Err(InvalidUtf8)
       }
       out.write_char(code.unsafe_to_char())
@@ -304,13 +304,22 @@ fn base64_decode(text : String) -> Result[Bytes, IonError] {
       } else if c == 47 {
         63
       } else if c == 61 {
+        if k < 2 || j + 4 != src.length() {
+          return Err(InvalidBlob(text))
+        }
         pads += 1
         0
       } else {
         return Err(InvalidBlob(text))
       }
+      if c != 61 && pads > 0 {
+        return Err(InvalidBlob(text))
+      }
       n = (n << 6) | v
       k += 1
+    }
+    if (pads == 2 && (n & 0xFFFF) != 0) || (pads == 1 && (n & 0xFF) != 0) {
+      return Err(InvalidBlob(text))
     }
     out.push(((n >> 16) & 255).to_byte())
     if pads < 2 {
