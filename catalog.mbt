@@ -2,7 +2,7 @@
 // A catalog is supplied by the caller; no network lookup occurs during decoding.
 pub(all) struct SharedSymbolTable {
   name : String
-  version : Int
+  version : Int32
   symbols : Array[String?]
 } derive(Eq, Debug)
 

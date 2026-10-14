@@ -1,8 +1,8 @@
 ///|
 priv struct TextCursor {
   src : String
-  mut i : Int
-  mut depth : Int
+  mut i : Int32
+  mut depth : Int32
   table : SymbolTable
 }
 
@@ -12,7 +12,7 @@ fn cursor_eof(c : TextCursor) -> Bool {
 }
 
 ///|
-fn cursor_peek(c : TextCursor) -> Int {
+fn cursor_peek(c : TextCursor) -> Int32 {
   if cursor_eof(c) {
     -1
   } else {
@@ -21,7 +21,7 @@ fn cursor_peek(c : TextCursor) -> Int {
 }
 
 ///|
-fn cursor_peek_at(c : TextCursor, n : Int) -> Int {
+fn cursor_peek_at(c : TextCursor, n : Int32) -> Int32 {
   let j = c.i + n
   if j >= c.src.length() {
     -1
@@ -292,7 +292,7 @@ fn parse_blob_or_clob(c : TextCursor) -> Result[IonValue, IonError] {
 ///|
 fn parse_container(
   c : TextCursor,
-  close : Int,
+  close : Int32,
   sexp : Bool,
 ) -> Result[Array[IonValue], IonError] {
   let items : Array[IonValue] = []
@@ -798,7 +798,7 @@ fn parse_annotated_value(
 ///|
 pub fn loads_text(
   text : String,
-  catalog? : Array[SharedSymbolTable] = [],
+  catalog~ : Array[SharedSymbolTable] = [],
 ) -> Result[Array[IonValue], IonError] {
   let c : TextCursor = { src: text, i: 0, depth: 0, table: symbol_table_new(), }
   let values : Array[IonValue] = []
@@ -836,7 +836,7 @@ pub fn loads_text(
 ///|
 pub fn load_text(
   text : String,
-  catalog? : Array[SharedSymbolTable] = [],
+  catalog~ : Array[SharedSymbolTable] = [],
 ) -> Result[IonValue, IonError] {
   match loads_text(text, catalog~) {
     Ok(vs) => if vs.length() == 0 { Err(EmptyDocument) } else { Ok(vs[0]) }

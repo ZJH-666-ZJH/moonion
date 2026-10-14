@@ -9,7 +9,7 @@ pub fn ion_version() -> String {
 ///|
 pub fn loads(
   input : String,
-  catalog? : Array[SharedSymbolTable] = [],
+  catalog~ : Array[SharedSymbolTable] = [],
 ) -> Result[Array[IonValue], IonError] {
   loads_text(input, catalog~)
 }
@@ -17,7 +17,7 @@ pub fn loads(
 ///|
 pub fn load(
   input : String,
-  catalog? : Array[SharedSymbolTable] = [],
+  catalog~ : Array[SharedSymbolTable] = [],
 ) -> Result[IonValue, IonError] {
   load_text(input, catalog~)
 }
@@ -35,7 +35,7 @@ pub fn dumps_all(values : Array[IonValue]) -> String {
 ///|
 pub fn loads_bytes(
   data : Bytes,
-  catalog? : Array[SharedSymbolTable] = [],
+  catalog~ : Array[SharedSymbolTable] = [],
 ) -> Result[Array[IonValue], IonError] {
   loads_binary(data, catalog~)
 }
@@ -43,7 +43,7 @@ pub fn loads_bytes(
 ///|
 pub fn load_bytes(
   data : Bytes,
-  catalog? : Array[SharedSymbolTable] = [],
+  catalog~ : Array[SharedSymbolTable] = [],
 ) -> Result[IonValue, IonError] {
   load_binary(data, catalog~)
 }
@@ -61,7 +61,7 @@ pub fn dumps_bytes_all(values : Array[IonValue]) -> Bytes {
 ///|
 pub fn text_to_binary(
   text : String,
-  catalog? : Array[SharedSymbolTable] = [],
+  catalog~ : Array[SharedSymbolTable] = [],
 ) -> Result[Bytes, IonError] {
   match loads_text(text, catalog~) {
     Ok(vs) => Ok(dumps_binary_all(vs))
@@ -72,7 +72,7 @@ pub fn text_to_binary(
 ///|
 pub fn binary_to_text(
   data : Bytes,
-  catalog? : Array[SharedSymbolTable] = [],
+  catalog~ : Array[SharedSymbolTable] = [],
 ) -> Result[String, IonError] {
   match loads_binary(data, catalog~) {
     Ok(vs) => Ok(dumps_text_all(vs))
@@ -83,7 +83,7 @@ pub fn binary_to_text(
 ///|
 pub fn roundtrip_text(
   text : String,
-  catalog? : Array[SharedSymbolTable] = [],
+  catalog~ : Array[SharedSymbolTable] = [],
 ) -> Result[String, IonError] {
   match loads_text(text, catalog~) {
     Ok(vs) => Ok(dumps_text_all(vs))
@@ -94,7 +94,7 @@ pub fn roundtrip_text(
 ///|
 pub fn roundtrip_binary(
   data : Bytes,
-  catalog? : Array[SharedSymbolTable] = [],
+  catalog~ : Array[SharedSymbolTable] = [],
 ) -> Result[Bytes, IonError] {
   match loads_binary(data, catalog~) {
     Ok(vs) => Ok(dumps_binary_all(vs))

@@ -8,6 +8,7 @@
 - Preserve clob bytes; correct S-expression separators and float text types.
 - Bound binary payloads, nesting, lengths and SIDs; reject truncated values, invalid offsets, UTF-8, escapes and Base64 padding.
 - Add long strings/clobs, Unicode escapes and line continuations; tighten numeric and keyword grammar.
+- Adapt to MoonBit 0.10.15 canonical `Int32` type names; require compiler 0.10.15 or newer.
 - Add independently generated ion-python fixtures and bidirectional interoperability checks to CI.
 - Breaking low-level API change: `SymbolTable.locals` now contains optional symbol texts (`Array[String?]`).
 

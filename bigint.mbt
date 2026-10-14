@@ -10,7 +10,7 @@ pub fn bigint_zero() -> BigInt {
 }
 
 ///|
-pub fn bigint_from_int(value : Int) -> BigInt {
+pub fn bigint_from_int(value : Int32) -> BigInt {
   bigint_from_int64(value.to_int64())
 }
 
@@ -58,7 +58,7 @@ pub fn BigInt::is_zero(self : BigInt) -> Bool {
 }
 
 ///|
-pub fn BigInt::sign(self : BigInt) -> Int {
+pub fn BigInt::sign(self : BigInt) -> Int32 {
   if self.digits.length() == 0 {
     0
   } else if self.negative {
@@ -97,7 +97,7 @@ pub fn BigInt::to_int64(self : BigInt) -> Int64? {
 }
 
 ///|
-fn divmod10_digits(digits : Array[Byte]) -> (Array[Byte], Int) {
+fn divmod10_digits(digits : Array[Byte]) -> (Array[Byte], Int32) {
   let q : Array[Byte] = []
   let mut rem = 0
   for b in digits {
@@ -117,7 +117,7 @@ pub fn BigInt::to_decimal_string(self : BigInt) -> String {
     "0"
   } else {
     let mut digits = bytes_to_array(self.digits)
-    let acc : Array[Int] = []
+    let acc : Array[Int32] = []
     while digits.length() > 0 {
       let pair = divmod10_digits(digits)
       digits = pair.0
@@ -176,7 +176,7 @@ pub fn bigint_from_decimal_string(text : String) -> Result[BigInt, IonError] {
 ///|
 pub fn bigint_from_radix_string(
   text : String,
-  radix : Int,
+  radix : Int32,
 ) -> Result[BigInt, IonError] {
   if text.length() == 0 {
     return Err(InvalidNumber(text))
@@ -223,7 +223,7 @@ pub fn bigint_from_radix_string(
 }
 
 ///|
-pub fn BigInt::compare(self : BigInt, other : BigInt) -> Int {
+pub fn BigInt::compare(self : BigInt, other : BigInt) -> Int32 {
   if self.sign() != other.sign() {
     if self.sign() < other.sign() {
       -1
@@ -264,7 +264,7 @@ pub fn BigInt::eq_value(self : BigInt, other : BigInt) -> Bool {
 }
 
 ///|
-fn mul_add_radix(mag : Array[Byte], radix : Int, digit : Int) -> Unit {
+fn mul_add_radix(mag : Array[Byte], radix : Int32, digit : Int32) -> Unit {
   let mut carry = digit
   let mut k = 0
   while k < mag.length() || carry > 0 {

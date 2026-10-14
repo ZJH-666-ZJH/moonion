@@ -1,5 +1,5 @@
 ///|
-fn ldexp2(value : Double, exp : Int) -> Double {
+fn ldexp2(value : Double, exp : Int32) -> Double {
   let mut v = value
   let mut n = exp
   while n > 0 {
@@ -25,14 +25,14 @@ fn is_inf(value : Double) -> Bool {
 
 ///|
 pub fn f64_from_be_bytes(
-  b0 : Int,
-  b1 : Int,
-  b2 : Int,
-  b3 : Int,
-  b4 : Int,
-  b5 : Int,
-  b6 : Int,
-  b7 : Int,
+  b0 : Int32,
+  b1 : Int32,
+  b2 : Int32,
+  b3 : Int32,
+  b4 : Int32,
+  b5 : Int32,
+  b6 : Int32,
+  b7 : Int32,
 ) -> Double {
   let hi = (b0.to_int64() << 56) |
     (b1.to_int64() << 48) |
@@ -47,7 +47,7 @@ pub fn f64_from_be_bytes(
 }
 
 ///|
-pub fn f64_from_be4(b0 : Int, b1 : Int, b2 : Int, b3 : Int) -> Double {
+pub fn f64_from_be4(b0 : Int32, b1 : Int32, b2 : Int32, b3 : Int32) -> Double {
   let bits32 = (b0.reinterpret_as_uint() << 24) |
     (b1.reinterpret_as_uint() << 16) |
     (b2.reinterpret_as_uint() << 8) |

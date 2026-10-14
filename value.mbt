@@ -84,7 +84,7 @@ pub fn ion_bool(value : Bool) -> IonValue {
 }
 
 ///|
-pub fn ion_int(value : Int) -> IonValue {
+pub fn ion_int(value : Int32) -> IonValue {
   ion_value(IntD(bigint_from_int(value)))
 }
 

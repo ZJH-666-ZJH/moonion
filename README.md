@@ -22,7 +22,7 @@ moon run examples/binary_roundtrip
 
 ## 环境和接口
 
-- `moonc` 不低于 0.10.14。
+- `moonc` 不低于 0.10.15（使用该版本的 `Int32` 类型名）。
 - 默认后端为 `wasm-gc`；CI 检查并构建 `wasm-gc`、`wasm`、`js`、`native`，测试后三者中的 `wasm-gc`、`js` 和 `native`。
 - 使用本库的包在 `moon.pkg` 中导入：
 

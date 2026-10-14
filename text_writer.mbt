@@ -159,7 +159,7 @@ fn struct_to_text(fields : Array[IonField]) -> String {
 }
 
 ///|
-fn str_has(text : String, code : Int) -> Bool {
+fn str_has(text : String, code : Int32) -> Bool {
   let mut i = 0
   let mut found = false
   while i < text.length() {

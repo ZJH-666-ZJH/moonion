@@ -1,5 +1,5 @@
 ///|
-fn nibble_value(c : UInt16) -> Int? {
+fn nibble_value(c : UInt16) -> Int32? {
   if c >= '0' && c <= '9' {
     Some(c.to_int() - 48)
   } else if c >= 'A' && c <= 'F' {
@@ -12,7 +12,7 @@ fn nibble_value(c : UInt16) -> Int? {
 }
 
 ///|
-fn nibble_char(value : Int, upper : Bool) -> Char {
+fn nibble_char(value : Int32, upper : Bool) -> Char {
   if value < 10 {
     (48 + value).unsafe_to_char()
   } else if upper {
@@ -23,7 +23,7 @@ fn nibble_char(value : Int, upper : Bool) -> Char {
 }
 
 ///|
-pub fn hex_encode(data : Bytes, upper? : Bool = false) -> String {
+pub fn hex_encode(data : Bytes, upper~ : Bool = false) -> String {
   let out = StringBuilder()
   for byte in data {
     let value = byte.to_int()
@@ -51,7 +51,7 @@ pub fn hex_decode(text : String) -> Result[Bytes, IonError] {
 }
 
 ///|
-fn slice_text(text : String, start : Int, end : Int) -> String {
+fn slice_text(text : String, start : Int32, end : Int32) -> String {
   let out = StringBuilder()
   let mut i = start
   while i < end && i < text.length() {
@@ -179,32 +179,32 @@ fn array_to_bytes(data : Array[Byte]) -> Bytes {
 }
 
 ///|
-fn is_digit(c : Int) -> Bool {
+fn is_digit(c : Int32) -> Bool {
   c >= 48 && c <= 57
 }
 
 ///|
-fn is_alpha(c : Int) -> Bool {
+fn is_alpha(c : Int32) -> Bool {
   (c >= 65 && c <= 90) || (c >= 97 && c <= 122)
 }
 
 ///|
-fn is_hex_char(c : Int) -> Bool {
+fn is_hex_char(c : Int32) -> Bool {
   is_digit(c) || (c >= 65 && c <= 70) || (c >= 97 && c <= 102)
 }
 
 ///|
-fn is_ident_start(c : Int) -> Bool {
+fn is_ident_start(c : Int32) -> Bool {
   is_alpha(c) || c == 36 || c == 95
 }
 
 ///|
-fn is_ident_part(c : Int) -> Bool {
+fn is_ident_part(c : Int32) -> Bool {
   is_ident_start(c) || is_digit(c)
 }
 
 ///|
-fn is_operator_char(c : Int) -> Bool {
+fn is_operator_char(c : Int32) -> Bool {
   c == 33 ||
   c == 35 ||
   c == 37 ||
@@ -227,12 +227,12 @@ fn is_operator_char(c : Int) -> Bool {
 }
 
 ///|
-fn push_u8(out : Array[Byte], value : Int) -> Unit {
+fn push_u8(out : Array[Byte], value : Int32) -> Unit {
   out.push((value & 255).to_byte())
 }
 
 ///|
-fn slice_bytes(data : Array[Byte], start : Int, end : Int) -> Bytes {
+fn slice_bytes(data : Array[Byte], start : Int32, end : Int32) -> Bytes {
   let out : Array[Byte] = []
   let mut i = start
   while i < end && i < data.length() {
@@ -334,7 +334,7 @@ fn base64_decode(text : String) -> Result[Bytes, IonError] {
 }
 
 ///|
-fn nibble_value_int(c : Int) -> Int? {
+fn nibble_value_int(c : Int32) -> Int32? {
   if c >= 48 && c <= 57 {
     Some(c - 48)
   } else if c >= 65 && c <= 70 {
@@ -347,7 +347,7 @@ fn nibble_value_int(c : Int) -> Int? {
 }
 
 ///|
-fn starts_with_at(text : String, start : Int, prefix : String) -> Bool {
+fn starts_with_at(text : String, start : Int32, prefix : String) -> Bool {
   if start + prefix.length() > text.length() {
     false
   } else {

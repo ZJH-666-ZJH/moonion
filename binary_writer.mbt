@@ -1,6 +1,6 @@
 ///|
-fn write_varuint(out : Array[Byte], value : Int) -> Unit {
-  let tmp : Array[Int] = []
+fn write_varuint(out : Array[Byte], value : Int32) -> Unit {
+  let tmp : Array[Int32] = []
   let mut n = value
   tmp.push(n & 0x7F)
   n = n >> 7
@@ -14,13 +14,13 @@ fn write_varuint(out : Array[Byte], value : Int) -> Unit {
 }
 
 ///|
-fn write_varint(out : Array[Byte], value : Int) -> Unit {
+fn write_varint(out : Array[Byte], value : Int32) -> Unit {
   let negative = value < 0
   let mut n = value.to_int64()
   if negative {
     n = -n
   }
-  let tail : Array[Int] = []
+  let tail : Array[Int32] = []
   while n > 63L {
     tail.push((n & 127L).to_int())
     n = n >> 7
@@ -37,7 +37,7 @@ fn write_varint(out : Array[Byte], value : Int) -> Unit {
 }
 
 ///|
-fn write_type_desc(out : Array[Byte], tid : Int, len : Int) -> Unit {
+fn write_type_desc(out : Array[Byte], tid : Int32, len : Int32) -> Unit {
   if len < 14 {
     push_u8(out, (tid << 4) | len)
   } else {
@@ -47,7 +47,7 @@ fn write_type_desc(out : Array[Byte], tid : Int, len : Int) -> Unit {
 }
 
 ///|
-fn write_null(out : Array[Byte], tid : Int) -> Unit {
+fn write_null(out : Array[Byte], tid : Int32) -> Unit {
   push_u8(out, (tid << 4) | 15)
 }
 
@@ -71,7 +71,7 @@ fn encode_int(out : Array[Byte], value : BigInt) -> Unit {
 }
 
 ///|
-fn encode_string_bytes(out : Array[Byte], tid : Int, raw : Bytes) -> Unit {
+fn encode_string_bytes(out : Array[Byte], tid : Int32, raw : Bytes) -> Unit {
   let arr = bytes_to_array(raw)
   write_type_desc(out, tid, arr.length())
   for b in arr {
@@ -255,7 +255,7 @@ fn encode_timestamp(out : Array[Byte], ts : IonTimestamp) -> Unit {
 fn encode_seq(
   out : Array[Byte],
   table : SymbolTable,
-  tid : Int,
+  tid : Int32,
   values : Array[IonValue],
 ) -> Unit {
   let inner : Array[Byte] = []

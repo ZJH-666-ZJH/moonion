@@ -10,20 +10,20 @@ pub(all) enum TimestampPrecision {
 
 ///|
 pub(all) struct IonTimestamp {
-  year : Int
-  month : Int
-  day : Int
-  hour : Int
-  minute : Int
-  second : Int
+  year : Int32
+  month : Int32
+  day : Int32
+  hour : Int32
+  minute : Int32
+  second : Int32
   fraction : IonDecimal
-  offset_minutes : Int
+  offset_minutes : Int32
   offset_unknown : Bool
   precision : TimestampPrecision
 } derive(Eq, Debug)
 
 ///|
-pub fn timestamp_year(year : Int) -> Result[IonTimestamp, IonError] {
+pub fn timestamp_year(year : Int32) -> Result[IonTimestamp, IonError] {
   if year < 1 || year > 9999 {
     Err(InvalidTimestamp(year.to_string()))
   } else {
@@ -43,7 +43,7 @@ pub fn timestamp_year(year : Int) -> Result[IonTimestamp, IonError] {
 }
 
 ///|
-fn days_in_month(year : Int, month : Int) -> Int {
+fn days_in_month(year : Int32, month : Int32) -> Int32 {
   if month == 1 ||
     month == 3 ||
     month == 5 ||
@@ -67,14 +67,14 @@ fn days_in_month(year : Int, month : Int) -> Int {
 
 ///|
 pub fn timestamp_of(
-  year : Int,
-  month : Int,
-  day : Int,
-  hour : Int,
-  minute : Int,
-  second : Int,
+  year : Int32,
+  month : Int32,
+  day : Int32,
+  hour : Int32,
+  minute : Int32,
+  second : Int32,
   fraction : IonDecimal,
-  offset_minutes : Int,
+  offset_minutes : Int32,
   offset_unknown : Bool,
   precision : TimestampPrecision,
 ) -> Result[IonTimestamp, IonError] {
@@ -184,7 +184,7 @@ pub fn timestamp_of(
 }
 
 ///|
-fn pad2(n : Int) -> String {
+fn pad2(n : Int32) -> String {
   if n < 10 {
     "0" + n.to_string()
   } else {
@@ -193,7 +193,7 @@ fn pad2(n : Int) -> String {
 }
 
 ///|
-fn pad4(n : Int) -> String {
+fn pad4(n : Int32) -> String {
   if n < 10 {
     "000" + n.to_string()
   } else if n < 100 {
@@ -283,7 +283,7 @@ fn fraction_digits(frac : IonDecimal) -> String {
 
 ///|
 // Ion binary stores the date/time fields in UTC; the public model uses local time.
-fn shift_timestamp(ts : IonTimestamp, minutes : Int) -> IonTimestamp {
+fn shift_timestamp(ts : IonTimestamp, minutes : Int32) -> IonTimestamp {
   if ts.precision == Year || ts.precision == Month || ts.precision == Day {
     return ts
   }
@@ -437,9 +437,9 @@ pub fn parse_timestamp_text(text : String) -> Result[IonTimestamp, IonError] {
 ///|
 fn parse_fixed_digits(
   text : String,
-  start : Int,
-  len : Int,
-) -> Result[Int, IonError] {
+  start : Int32,
+  len : Int32,
+) -> Result[Int32, IonError] {
   if start + len > text.length() {
     return Err(InvalidNumber(text))
   }
@@ -457,7 +457,7 @@ fn parse_fixed_digits(
 }
 
 ///|
-fn parse_offset(text : String) -> Result[(Int, Bool), IonError] {
+fn parse_offset(text : String) -> Result[(Int32, Bool), IonError] {
   if text == "Z" {
     Ok((0, false))
   } else if text == "-00:00" {

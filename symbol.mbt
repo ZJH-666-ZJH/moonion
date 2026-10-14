@@ -1,5 +1,5 @@
 ///|
-pub fn system_symbol_name(id : Int) -> String? {
+pub fn system_symbol_name(id : Int32) -> String? {
   match id {
     1 => Some("$ion")
     2 => Some("$ion_1_0")
@@ -15,7 +15,7 @@ pub fn system_symbol_name(id : Int) -> String? {
 }
 
 ///|
-pub fn system_symbol_id(name : String) -> Int? {
+pub fn system_symbol_id(name : String) -> Int32? {
   match name {
     "$ion" => Some(1)
     "$ion_1_0" => Some(2)
@@ -31,7 +31,7 @@ pub fn system_symbol_id(name : String) -> Int? {
 }
 
 ///|
-pub fn system_max_id() -> Int {
+pub fn system_max_id() -> Int32 {
   9
 }
 
@@ -46,7 +46,7 @@ pub fn symbol_table_new() -> SymbolTable {
 }
 
 ///|
-pub fn SymbolTable::intern(self : SymbolTable, name : String) -> Int {
+pub fn SymbolTable::intern(self : SymbolTable, name : String) -> Int32 {
   match system_symbol_id(name) {
     Some(id) => id
     None => {
@@ -76,7 +76,7 @@ pub fn SymbolTable::define_local(self : SymbolTable, name : String) -> Unit {
 ///|
 pub fn SymbolTable::name_of(
   self : SymbolTable,
-  id : Int,
+  id : Int32,
 ) -> Result[String, IonError] {
   if id == 0 {
     Err(InvalidSymbol("unresolved SID 0"))

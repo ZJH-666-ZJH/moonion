@@ -1,54 +1,54 @@
 ///|
-const TID_NULL : Int = 0
+const TID_NULL : Int32 = 0
 
 ///|
-const TID_BOOL : Int = 1
+const TID_BOOL : Int32 = 1
 
 ///|
-const TID_POSINT : Int = 2
+const TID_POSINT : Int32 = 2
 
 ///|
-const TID_NEGINT : Int = 3
+const TID_NEGINT : Int32 = 3
 
 ///|
-const TID_FLOAT : Int = 4
+const TID_FLOAT : Int32 = 4
 
 ///|
-const TID_DECIMAL : Int = 5
+const TID_DECIMAL : Int32 = 5
 
 ///|
-const TID_TIMESTAMP : Int = 6
+const TID_TIMESTAMP : Int32 = 6
 
 ///|
-const TID_SYMBOL : Int = 7
+const TID_SYMBOL : Int32 = 7
 
 ///|
-const TID_STRING : Int = 8
+const TID_STRING : Int32 = 8
 
 ///|
-const TID_CLOB : Int = 9
+const TID_CLOB : Int32 = 9
 
 ///|
-const TID_BLOB : Int = 10
+const TID_BLOB : Int32 = 10
 
 ///|
-const TID_LIST : Int = 11
+const TID_LIST : Int32 = 11
 
 ///|
-const TID_SEXP : Int = 12
+const TID_SEXP : Int32 = 12
 
 ///|
-const TID_STRUCT : Int = 13
+const TID_STRUCT : Int32 = 13
 
 ///|
-const TID_ANNOT : Int = 14
+const TID_ANNOT : Int32 = 14
 
 ///|
 priv struct BinCursor {
   data : Array[Byte]
-  mut i : Int
-  mut limit : Int
-  mut depth : Int
+  mut i : Int32
+  mut limit : Int32
+  mut depth : Int32
   catalog : Array[SharedSymbolTable]
   table : SymbolTable
 }
@@ -59,7 +59,7 @@ fn bin_eof(c : BinCursor) -> Bool {
 }
 
 ///|
-fn bin_need(c : BinCursor, n : Int) -> Result[Unit, IonError] {
+fn bin_need(c : BinCursor, n : Int32) -> Result[Unit, IonError] {
   if n < 0 || n > c.limit - c.i {
     Err(UnexpectedEof)
   } else {
@@ -131,7 +131,7 @@ fn read_varint_at(c : BinCursor) -> Result[Int64, IonError] {
 }
 
 ///|
-fn read_exact(c : BinCursor, n : Int) -> Result[Bytes, IonError] {
+fn read_exact(c : BinCursor, n : Int32) -> Result[Bytes, IonError] {
   match bin_need(c, n) {
     Err(e) => return Err(e)
     Ok(_) => ()
@@ -142,7 +142,7 @@ fn read_exact(c : BinCursor, n : Int) -> Result[Bytes, IonError] {
 }
 
 ///|
-fn parse_type_desc(c : BinCursor) -> Result[(Int, Int, Bool), IonError] {
+fn parse_type_desc(c : BinCursor) -> Result[(Int32, Int32, Bool), IonError] {
   match bin_need(c, 1) {
     Err(e) => return Err(e)
     Ok(_) => ()
@@ -245,7 +245,7 @@ fn parse_binary_value(c : BinCursor) -> Result[IonValue, IonError] {
 ///|
 fn parse_annotation_wrapper(
   c : BinCursor,
-  len : Int,
+  len : Int32,
 ) -> Result[IonValue, IonError] {
   let end = c.i + len
   let annot_len = match read_varuint_at(c) {
@@ -299,8 +299,8 @@ fn parse_annotation_wrapper(
 ///|
 fn parse_typed_payload(
   c : BinCursor,
-  tid : Int,
-  len : Int,
+  tid : Int32,
+  len : Int32,
   is_null : Bool,
 ) -> Result[IonValue, IonError] {
   if is_null {
@@ -463,7 +463,7 @@ fn parse_typed_payload(
 }
 
 ///|
-fn bytes_to_int(raw : Bytes) -> Int {
+fn bytes_to_int(raw : Bytes) -> Int32 {
   let arr = bytes_to_array(raw)
   let mut n = 0
   for b in arr {
@@ -475,7 +475,7 @@ fn bytes_to_int(raw : Bytes) -> Int {
 ///|
 fn parse_decimal_payload(
   c : BinCursor,
-  len : Int,
+  len : Int32,
 ) -> Result[IonValue, IonError] {
   if len == 0 {
     Ok(ion_decimal(decimal_from_int(0)))
@@ -515,7 +515,7 @@ fn parse_decimal_payload(
 ///|
 fn parse_timestamp_payload(
   c : BinCursor,
-  len : Int,
+  len : Int32,
 ) -> Result[IonValue, IonError] {
   let end = c.i + len
   let offset_start = c.i
@@ -636,7 +636,10 @@ fn parse_timestamp_payload(
 }
 
 ///|
-fn parse_struct_payload(c : BinCursor, len : Int) -> Result[IonValue, IonError] {
+fn parse_struct_payload(
+  c : BinCursor,
+  len : Int32,
+) -> Result[IonValue, IonError] {
   let end = c.i + len
   let fields : Array[IonField] = []
   while c.i < end {
@@ -690,7 +693,7 @@ fn expect_bvm(c : BinCursor) -> Result[Unit, IonError] {
 ///|
 pub fn loads_binary(
   data : Bytes,
-  catalog? : Array[SharedSymbolTable] = [],
+  catalog~ : Array[SharedSymbolTable] = [],
 ) -> Result[Array[IonValue], IonError] {
   let c : BinCursor = {
     data: bytes_to_array(data),
@@ -737,7 +740,7 @@ pub fn loads_binary(
 ///|
 pub fn load_binary(
   data : Bytes,
-  catalog? : Array[SharedSymbolTable] = [],
+  catalog~ : Array[SharedSymbolTable] = [],
 ) -> Result[IonValue, IonError] {
   match loads_binary(data, catalog~) {
     Ok(vs) => if vs.length() == 0 { Err(EmptyDocument) } else { Ok(vs[0]) }

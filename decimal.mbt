@@ -1,16 +1,16 @@
 ///|
 pub(all) struct IonDecimal {
   coefficient : BigInt
-  exponent : Int
+  exponent : Int32
 } derive(Eq, Debug)
 
 ///|
-pub fn decimal_from_int(value : Int) -> IonDecimal {
+pub fn decimal_from_int(value : Int32) -> IonDecimal {
   { coefficient: bigint_from_int(value), exponent: 0, }
 }
 
 ///|
-pub fn decimal_from_parts(coefficient : BigInt, exponent : Int) -> IonDecimal {
+pub fn decimal_from_parts(coefficient : BigInt, exponent : Int32) -> IonDecimal {
   { coefficient, exponent, }
 }
 
@@ -167,7 +167,7 @@ pub fn parse_decimal_text(text : String) -> Result[IonDecimal, IonError] {
 }
 
 ///|
-fn parse_signed_int(text : String) -> Result[Int, IonError] {
+fn parse_signed_int(text : String) -> Result[Int32, IonError] {
   if text.length() == 0 {
     return Err(InvalidNumber(text))
   }

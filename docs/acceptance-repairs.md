@@ -46,7 +46,7 @@ python tests/verify_interop.py --target js
 moon coverage analyze -- -f summary
 ```
 
-本地工具链为 `moonc v0.10.14+7d59c7ec9-dev`。四个后端的静态检查通过；wasm-gc、wasm、js 构建通过。Windows 环境没有系统 C 编译器，native 构建/测试由 Ubuntu CI 验证，不能用静态检查冒充 native 构建成功。
+最初修复及覆盖率测量使用 `moonc v0.10.14+7d59c7ec9-dev`，随后在 `moonc v0.10.15+943464bfa` 稳定版上重新执行测试与官方交叉验证。已适配 0.10.15 的 `Int32` 类型名及格式化输出；最终源码最低要求为 0.10.15。四个后端的静态检查通过；wasm-gc、wasm、js 构建通过。Windows 环境没有系统 C 编译器，native 构建/测试由 Ubuntu CI 验证，不能用静态检查冒充 native 构建成功。
 
 ## 发布状态与 API 变更
 
